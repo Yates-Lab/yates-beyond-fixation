@@ -1,5 +1,5 @@
-function [xy, ar, ctr] = get_contour(xi,yi,rf,varargin)
-% get_contour(xi,yi,rf,varargin)
+function [xy, ar, ctr, maxoutrf] = get_contour(xi,yi,rf,varargin)
+% [xy, ar, ctr, maxoutrf] = get_contour(xi,yi,rf,varargin)
 
 ip = inputParser();
 ip.addParameter('thresh', 4)
@@ -42,6 +42,7 @@ y = c(2,cinds);
 xy = [x(:) y(:)];
 
 mask = poly2mask(cmask(1,cinds), cmask(2,cinds), size(rf,1), size(rf,2));
+maxoutrf = max(rf(:).*~mask(:));
 wts = rf.*mask;
 wts = wts / sum(wts(:));
 xc = xi(:)'*wts(:);

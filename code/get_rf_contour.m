@@ -1,6 +1,6 @@
-function [con, ar, ctr, thresh] = get_rf_contour(xi,yi,rf,varargin)
+function [con, ar, ctr, thresh, maxoutrf] = get_rf_contour(xi,yi,rf,varargin)
 % get_rf_contour(xi,yi,rf,varargin)
-% [con, ar, ctr] = get_rf_contour(xi,yi,rf,varargin)
+% [con, ar, ctr, thresh, maxoutrf] = get_rf_contour(xi,yi,rf,varargin)
 
 ip = inputParser();
 ip.addParameter('thresh', .5)
@@ -22,14 +22,14 @@ cond = true;
 while cond
 
     thresh = thresh - .1;
-    [~, ~, ctr] = get_contour(xi, yi, rf, 'thresh', thresh, 'plot', ip.Results.plot);
+    [~, ~, ctr, maxoutrf] = get_contour(xi, yi, rf, 'thresh', thresh, 'plot', ip.Results.plot);
     cond = inpolygon(ctr(1), ctr(2), con0(:,1), con0(:,2));
     if thresh <= thresh0 
         cond = false;
     end
     if ~cond
         thresh = thresh + .1;
-        [con, ar, ctr] = get_contour(xi, yi, rf, 'thresh', thresh, 'plot', ip.Results.plot);
+        [con, ar, ctr, maxoutrf] = get_contour(xi, yi, rf, 'thresh', thresh, 'plot', ip.Results.plot);
     end
         
 end

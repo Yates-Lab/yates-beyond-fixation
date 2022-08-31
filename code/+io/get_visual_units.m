@@ -36,6 +36,7 @@ tstop = Exp.ptb2Ephys(cellfun(@(x) x.ENDCLOCKTIME, Exp.D));
 
 % start / stop / start / stop
 bEdges = reshape([tstart tstop]', [], 1);
+bEdges(end+1) = bEdges(end) + 1;
 
 % calculate firing rate during trials and during ITIs
 NT = numel(bEdges)-1;
@@ -64,10 +65,11 @@ for cc = 1:NC
     Stmp.cid = cids(cc);
     for iStim = 1:numel(stimSets)
         validTrials = io.getValidTrials(Exp, stimSets{iStim});
-        Stmp.(stimSets{iStim}) = struct('sig', nan, 'stimFr', mean(stimFr(validTrials)), 'isiFr', mean(isiFr(validTrials)));
+        Stmp.(stimSets{iStim}) = struct('sig', nan, 'stimFr', nan, 'isiFr', nan);
         if numel(validTrials) > 10
+            Stmp.(stimSets{iStim}).stimFr = mean(stimFr(validTrials));
+            Stmp.(stimSets{iStim}).isiFr = mean(isiFr(validTrials));
             Stmp.(stimSets{iStim}).sig = ismodulated(stimFr, isiFr, validTrials);
-            
         end
     end
 
