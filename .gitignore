@@ -128,3 +128,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 figures/*.pdf
+figures/MT_RF/*.pdf
+output/fig03_MT_RFs/*.pkl
+*.ckpt
+*.tfevents.*
+latest_checkpoint.txt
+model.pt

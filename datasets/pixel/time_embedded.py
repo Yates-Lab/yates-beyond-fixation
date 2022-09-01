@@ -5,7 +5,7 @@ import numpy as np
 import h5py
 import os
 from .utils import get_stim_list, download_set
-from datasets.mitchell.pixel.utils import shift_im
+from datasets.pixel.utils import shift_im
 
 class Pixel(Dataset):
     '''
@@ -349,7 +349,7 @@ class Pixel(Dataset):
             sfname = [f for f in os.listdir(self.dirname) if 'shifter_' + sess in f]
                 
             if len(sfname) == 0:
-                from datasets.mitchell.pixel.utils import download_shifter
+                from datasets.pixel.utils import download_shifter
                 download_shifter(sess, self.dirname)
             else:
                 print("Shifter exists")
@@ -360,7 +360,7 @@ class Pixel(Dataset):
                 shifter = shifter_res['shifters'][np.argmin(shifter_res['vallos'])]
 
             if plot:
-                from datasets.mitchell.pixel.utils import plot_shifter
+                from datasets.pixel.utils import plot_shifter
                 _ = plot_shifter(shifter, title=sess)
             
             shifters[sess] = shifter

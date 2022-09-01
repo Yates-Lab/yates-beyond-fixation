@@ -5,7 +5,7 @@ import numpy as np
 import h5py
 from tqdm import tqdm
 import os
-from ..utils import create_time_embedding
+from .utils import create_time_embedding
 
 def get_unit_ids(id=None):
     cids_list = {
@@ -25,7 +25,47 @@ def get_unit_ids(id=None):
 def get_stim_file(id=None):
 
     stim_list = {
-            '20190120': 'Ellie_190120_0_0_30_30_2.mat'
+            '20190120': 'Ellie_190120_0_0_30_30_2.mat',
+            '20191210': 'Ellie_101219_0_0_30_30_2.mat',
+            # '20200109': 'Ellie_090120a_0_0_30_30_2.mat',
+            # '20200115': 'Ellie_150120a_0_0_30_30_2.mat',
+            # '20200118': 'Ellie_180120a_0_0_30_30_2.mat',
+            '20200119': 'Ellie_190120_0_0_30_30_2.mat',
+            # '20200119a': 'Ellie_190120a_0_0_30_30_2.mat',
+            # '20200120': 'Ellie_200120a_0_0_30_30_2.mat',
+            # '20200121': 'Ellie_210120a_0_0_30_30_2.mat',
+            # '20200123': 'Ellie_230120a_0_0_30_30_2.mat',
+            # '20200227': 'Ellie_270220a_0_0_30_30_2.mat',
+            '20210215': 'Milo_150221a_0_0_30_30_2.mat',
+            '20210222': 'Milo_220221a_0_0_30_30_2.mat',
+            '20210317': 'Milo_170321a_0_0_30_30_2.mat',
+            '20210407': 'Milo_070421a_0_0_30_30_2.mat',
+            '20210409': 'Milo_090421a_0_0_30_30_2.mat',
+            '20210421': 'Milo_210421a_0_0_30_30_2.mat',
+            '20210423': 'Milo_230421a_0_0_30_30_2.mat',
+            '20210430': 'Milo_300421a_0_0_30_30_2.mat',
+            '20210503': 'Milo_030521a_0_0_30_30_2.mat',
+            '20210510': 'Milo_100521a_0_0_30_30_2.mat',
+            '20210514': 'Milo_140521a_0_0_30_30_2.mat',
+            '20210517': 'Milo_170521a_0_0_30_30_2.mat',
+            '20210519': 'Milo_190521a_0_0_30_30_2.mat',
+            '20210528': 'Milo_280521a_0_0_30_30_2.mat',
+            '20210603': 'Milo_030621a_0_0_30_30_2.mat',
+            '20210703': 'Milo_300721a_0_0_30_30_2.mat',
+            '20210708': 'Milo_080721a_0_0_30_30_2.mat',
+            '20210713': 'Milo_130721a_0_0_30_30_2.mat',
+            '20210715': 'Milo_150721a_0_0_30_30_2.mat',
+            '20210721': 'Milo_210721a_0_0_30_30_2.mat',
+            '20210722': 'Milo_220721a_0_0_30_30_2.mat',
+            '20210802': 'Milo_020821a_0_0_30_30_2.mat',
+            '20210811': 'Milo_110821a_0_0_30_30_2.mat',
+            '20210812': 'Milo_120821a_0_0_30_30_2.mat',
+            '20210817': 'Milo_170821a_0_0_30_30_2.mat',
+            '20210824': 'Milo_240821a_0_0_30_30_2.mat',
+            '20210831': 'Milo_310821a_0_0_30_30_2.mat',
+            '20210909': 'Milo_090921a_0_0_30_30_2.mat',
+            '20210916': 'Milo_160921a_0_0_30_30_2.mat',
+            
         }
 
     if id is None:
@@ -47,7 +87,7 @@ class MTDotsDataset(Dataset):
         self.sessname = sessname
         self.dirname = dirname
         self.filename = get_stim_file(sessname)
-        self.cids = get_unit_ids(sessname)
+        
         self.num_lags = num_lags
         # ensure_dir(self.dirname)
 
@@ -63,18 +103,29 @@ class MTDotsDataset(Dataset):
         #         return
         
         self.fhandle = h5py.File(os.path.join(self.dirname, self.filename), 'r')
+        try:
+            self.cids = get_unit_ids(sessname)
+        except:
+            self.cids = list(np.arange(self.fhandle['MoStimY'].shape[0]))
 
         vel, Robs  = self.load_set()
         
         self.num_channels = 2 # vx, vy
         self.vel = vel
-        Xstim = create_time_embedding( vel, [self.num_lags, self.NX*self.num_channels, self.NY], tent_spacing=1)
-        self.Xstim = torch.tensor(Xstim, dtype=torch.float32)
-        self.robs = torch.tensor(Robs, dtype=torch.float32)
+        NT = self.vel.shape[0]
+        inds = np.arange(self.num_lags, NT)[:,None] - np.arange(self.num_lags)
+        Xstim = self.vel[inds,...]
+        # Xstim = create_time_embedding( vel, [self.num_lags, self.NX*self.num_channels, self.NY], tent_spacing=1)
+        
+        self.Xstim = torch.tensor(Xstim, dtype=torch.float32).permute(0,2,3,4,1)
+        self.dims = list(self.Xstim.shape[1:])
+        self.Xstim = torch.flatten(self.Xstim, start_dim=1)
+        self.robs = torch.tensor(Robs[inds[:,0],:], dtype=torch.float32)
+        self.NT = self.robs.shape[0]
     
     def __getitem__(self, index):
         stim = self.Xstim[index,:]
-        dfs = torch.ones(stim.shape, dtype=torch.float32)
+        dfs = torch.ones(self.robs[index,:].shape, dtype=torch.float32)
         return {'stim': stim, 'robs': self.robs[index,:], 'dfs': dfs}
 
     def __len__(self) -> int:
@@ -119,8 +170,8 @@ class MTDotsDataset(Dataset):
         vel = np.concatenate((dx, dy), axis=1)
         
         # weird python reshaping
-        v_reshape = np.reshape(vel,[self.NT, 2, self.NX*self.NY])
-        vel = v_reshape.reshape((self.NT, self.NX*self.NY*2))
+        vel = np.reshape(vel,[self.NT, 2, self.NX, self.NY])
+        # vel = v_reshape.reshape((self.NT, self.NX*self.NY*2))
 
         # v_reshape = np.reshape(vel,[self.NT, 2, self.NX*self.NY])
         # vel = np.transpose(v_reshape, (0,2,1)).reshape((self.NT, self.NX*self.NY*2))
@@ -136,6 +187,7 @@ class MTDotsDataset(Dataset):
         mask = ((amp/np.max(amp)) > .5)
 
         X = self.fhandle['MoStimX'][:,:].T
+        X = X[self.num_lags:,:]
         # stim is NT x (NX*NY). Any non-zero value is the drift direction (as an integer) of a dot (at that spatial location)
         Stim = X[:,3:]
 
@@ -195,12 +247,19 @@ class MTDotsDataset(Dataset):
         plt.xticks(np.arange(0,365,90))
         tchat = von_mises(dirs/180*np.pi, popt[0], popt[1], popt[2], popt[3])
         r2 = r_squared(np.expand_dims(tuning_curve, axis=1), np.expand_dims(tchat, axis=1))
-
-        return {'thetas': theta/np.pi*180, 'fit': von_mises(theta, popt[0], popt[1], popt[2], popt[3]), 'dirs': dirs, 'tuning_curve': tuning_curve, 'tuning_curve_ci': np.abs(ci-I[:,peak_lag]), 'r2': r2}
+        out = {'thetas': theta/np.pi*180,
+            'fit': von_mises(theta, popt[0], popt[1], popt[2], popt[3]),
+            'dirs': dirs,
+            'popt': popt,
+            'pcov': pcov,
+            'tuning_curve': tuning_curve,
+            'tuning_curve_ci': np.abs(ci-I[:,peak_lag]),
+            'r2': r2}
+        return out
 
     def get_rf(self, wtsAll, cc):
         
-        wtsFull = wtsAll[:,cc]
+        wtsFull = wtsAll[...,cc]
 
         dims = [self.num_channels, self.NX, self.NY, self.num_lags]
         wts = np.reshape(wtsFull, dims)
