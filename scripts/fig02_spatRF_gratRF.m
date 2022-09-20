@@ -7,318 +7,349 @@ figDir = 'figures/fig02';
 datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'preprocessed');
 sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
 
-%%
+%% Loop over sesssions, get spatial receptive fields
+outdir = './output/fig02_spat_reg';
+ 
+set(groot, 'DefaultFigureVisible', 'off')
 
-Exp = load(fullfile(datadir, sesslist{5}));
+Srf = cell(numel(sesslist), 1);
+overwrite = false;
+for isess = 1:numel(sesslist)
+    sessname = sesslist{isess};
 
-%%
-vis = io.get_visual_units(Exp, 'plotit', true, 'visStimField', 'BackImage');
-
-%%
-field = 'Dots';
-plot(arrayfun(@(x) x.(field).isiFr, vis), arrayfun(@(x) x.(field).stimFr, vis), 'o');
-sig = arrayfun(@(x) x.(field).sig, vis)>0;
-mfr = arrayfun(@(x) x.(field).stimFr, vis);
-isiV = arrayfun(@(x) x.isiRate, vis);
-
-figure(1); clf
-plot(mfr, isiV, 'o')
-hold on
-plot(mfr(sig), isiV(sig), 'o')
-
-%%
-
-
-figure(1); clf;
-plot(arrayfun(@(x) x.(field).isiFr, vis), arrayfun(@(x) x.(field).stimFr, vis), 'o');
-sig = arrayfun(@(x) x.(field).sig, vis)>0;
-mfr = arrayfun(@(x) x.(field).stimFr, vis);
-isiV = arrayfun(@(x) x.isiRate, vis);
-
-hold on
-plot(arrayfun(@(x) x.(field).isiFr, vis(sig)), arrayfun(@(x) x.(field).stimFr, vis(sig)), 'o');
-plot(xlim, xlim, 'k')
-
-%%
-% tmp = get_spat_rf_coarsefine(Exp);
-% tmp = get_spatial_rfs(Exp);
-
-dotTrials = io.getValidTrials(Exp, 'Dots');
-if ~isempty(dotTrials)
+    fname = fullfile(outdir, sessname);
     
-    BIGROI = [-1 -.5 1 .5]*14;
-    eyePos = Exp.vpx.smo(:,2:3);
+    if exist(fname, 'file') && ~overwrite
+        RFs = load(fname);
 
-    binSize = .25;
-    Frate = 60;
-    [Xstim, RobsSpace, opts] = io.preprocess_spatialmapping_data(Exp, ...
-        'ROI', BIGROI*Exp.S.pixPerDeg, 'binSize', binSize*Exp.S.pixPerDeg, ...
-        'eyePosExclusion', 500, ...
-        'eyePos', eyePos, 'frate', Frate, ...
-        'fastBinning', false);
-end
+    else
+        Exp = load(fullfile(datadir, sessname));
 
-%%
-win = [-1 10];
-inds = hypot(opts.eyePosAtFrame(:,1), opts.eyePosAtFrame(:,2)) < 500;
-stasFull = forwardCorrelation(Xstim, RobsSpace, win, inds, [], true, true);
-% stasNull = forwardCorrelation(Xstim, Shuffle(RobsSpace), win, [], [], [], true);
-
-%%
-
-Ssta = [];
-NC = numel(vis);
-thresh = .7;
-for cc = 1:NC
-
-    stas = stasFull(:,:,cc); % ./ imgaussfilt(std(stasNull(:,:,cc)), 1);
-    [~, peaklag] = max(std(stas, [], 2));
-    rf = reshape(stas(peaklag, :), opts.dims);
-    Stmp.Im = rf;
-    Stmp.contour = [nan nan];
-    Stmp.contourConv = [nan nan];
-    Stmp.thresh = nan;
-    Stmp.ctr = [nan nan];
-    Stmp.area = nan;
-    Stmp.areaConvex = nan;
-    Stmp.areaRatio = nan;
-    Stmp.maxoutrf = nan;
-
-    if peaklag == 1
-        Ssta = [Ssta; Stmp];
-        continue
-    end
+        RFs = get_spat_rf_coarsefine(Exp);
         
-       
-    [xx,yy] = meshgrid(opts.xax/Exp.S.pixPerDeg, opts.yax/Exp.S.pixPerDeg);
-    rf = (rf - min(rf(:))) / (max(rf(:)) - min(rf(:)));
-    [con, ar, ctr, maxoutrf] = get_contour(xx,yy,rf, 'thresh', thresh);
-%     [con, ar, ctr, thresh, maxoutrf] = get_rf_contour(xx,yy,rf, 'thresh', .7, 'plot', false);
-    
-    if thresh == .9
-        Ssta = [Ssta; Stmp];
-        % no contour found
-        continue
+        save(fname, '-v7.3', '-struct', 'RFs');
+        
     end
+
+    Srf{isess} = RFs;
     
-
-    k = convhull(con(:,1), con(:,2));
-    arConv = polyarea(con(k,1), con(k,2));
-
-    Stmp.contour = con;
-    Stmp.contourConv = [con(k,1), con(k,2)];
-    Stmp.thresh = thresh;
-    Stmp.ctr = ctr;
-    Stmp.area = ar;
-    Stmp.areaConvex = arConv;
-    Stmp.areaRatio = ar / arConv;
-    Stmp.maxoutrf = maxoutrf;
-
-
-    Ssta = [Ssta; Stmp];
-   
-end
-
-%%
-
-cc = cc+1;
-if cc > NC
-    cc = 1;
-end
-figure(1); clf
-imagesc(xx(1,:), yy(:,1), Ssta(cc).Im)
-hold on
-plot(Ssta(cc).contour(:,1), Ssta(cc).contour(:,2), 'r')
-title(Ssta(cc).maxoutrf)
-
-
-figure(10); clf
-sx = ceil(sqrt(NC));
-sy = round(sqrt(NC));
-for cc = 1:NC
-    subplot(sx, sy, cc, 'align')
-    imagesc(xx(1,:), yy(:,1), Ssta(cc).Im)
-    hold on
-    plot(Ssta(cc).contour(:,1), Ssta(cc).contour(:,2), 'r')
-    title(Ssta(cc).maxoutrf/Ssta(cc).thresh)
-    axis off
-end
-
-%%
-sig = arrayfun(@(x) x.(field).sig, vis)>0;
-mfr = arrayfun(@(x) x.(field).stimFr, vis);
-isiV = arrayfun(@(x) x.isiRate, vis);
-
-
-cx = arrayfun(@(x) x.ctr(1), Ssta);
-cy = arrayfun(@(x) x.ctr(2), Ssta);
-ar = arrayfun(@(x) x.area, Ssta);
-arC = arrayfun(@(x) x.areaConvex, Ssta);
-ecc = hypot(cx, cy);
-thresh = arrayfun(@(x) x.thresh, Ssta);
-maxoutrf = arrayfun(@(x) x.maxoutrf, Ssta);
-hasrf = arrayfun(@(x) x.areaRatio, Ssta) > .9;
-hasrf = maxoutrf./thresh < 1.05;
-
-ix = hasrf;
-
-
-figure(1); clf
-subplot(1,2,1)
-% plot(ecc, arC, 'o');
-hold on
-plot(ecc, ar, '.');
-% plot(ecc(ix), arC(ix), 'o')
-plot(ecc(ix), ar(ix), '.')
-set(gca, 'xscale', 'log')
-subplot(1,2,2)
-plot(ar, arC, 'o');
-hold on
-plot(xlim, xlim, 'k')
-plot(ar(ix), arC(ix), 'o');
-
-
-
-%%
-
-
-cc = cc + 1;
-% stas = forwardCorrelation(Xstim, RobsSpace(:,cc), win);
-% close all
-figure(1); clf
-stas = stasFull(:,:,cc); % ./ imgaussfilt(std(stasNull(:,:,cc)), 1);
-[~, peaklag] = max(std(stas, [], 2));
-
-% stas = stasFull(:,:,cc); % - ;
-% stas = stas / std(stas(:)) - mean(stas(:));
-wm = [min(stas(:)) max(stas(:))];
-nlags = size(stas,1);
-% try
-    for ilag = 1:nlags
-        subplot(2, ceil(nlags/2), ilag)
-        imagesc(opts.xax/Exp.S.pixPerDeg, opts.yax/Exp.S.pixPerDeg, reshape(stas(ilag, :), opts.dims), wm)
-        if ilag==peaklag
-            title(sprintf('peak lag: %02.2f', (win(1)+ilag-1)*16))
-        else
-            title(sprintf('lag: %02.2f', (win(1)+ilag-1)*16))
-        end
-        axis xy
-    end
-% end
-drawnow
-
-%%
-ilag = 4;
-figure(2); clf
-I = reshape(stas(ilag, :), opts.dims);
-% I = reshape(std(stas), opts.dims);
-[xx,yy] = meshgrid(opts.xax/Exp.S.pixPerDeg, opts.yax/Exp.S.pixPerDeg);
-% [con, ar, ctr, thresh] = get_rf_contour(xx,yy, I, 'plot', true)
-
-figure(1); clf
-I = (I - min(I(:))) / (max(I(:)) - min(I(:)));
-subplot(1,2,1)
-[con90, ar90, ctr90] = get_contour(xx, yy, I, 'thresh', .9, 'plot', false);
-imagesc(xx(1,:),yy(:,1),I);
-hold on
-plot(con90(:,1), con90(:,2), 'r')
-
-subplot(1,2,2)
-[con50, ar50, ctr50] = get_contour(xx, yy, I, 'thresh', .5, 'plot', false);
-imagesc(xx(1,:),yy(:,1),I);
-hold on
-plot(con50(:,1), con50(:,2), 'r')
-k = convhull(con50(:,1), con50(:,2));
-arC = polyarea(con50(k,1), con50(k,2));
-disp(ar50/arC)
-plot(con50(k,1), con50(k,2), 'g')
-
-cond = inpolygon(ctr90(1), ctr90(2), con50(:,1), con50(:,2));
-disp(cond)
-%% Loop over examples, get Srf
-
-clear Srf
-
-sesslist = io.dataFactory;
-sesslist = sesslist(1:57);
-
-sfname = fullfile('Data', 'spatialrfsreg.mat');
-Srf = cell(numel(sesslist),1);
-
-if exist(sfname, 'file')==2
-    disp('Loading Spatial RFs')
-    load(sfname)
-else
-    rng(1234)
-    for iEx = 1:numel(sesslist)
-        if isempty(Srf{iEx})
-
-            Exp = io.dataFactoryGratingSubspace(sesslist{iEx}, 'spike_sorting', sorter);
-            
-            tmp = get_spat_rf_coarsefine(Exp);
-            tmp.sorter = sorter;
-            Srf{iEx} = tmp;
-        end
-    end
-    
-    save(sfname, '-v7.3', 'Srf')
 end
 disp("Done")
+set(groot, 'DefaultFigureVisible', 'on')
 
 %% Grating RFs
 Sgt = cell(numel(sesslist),1);
 fittype = 'basis';
-gfname = fullfile('Data', sprintf('gratrf_%s.mat', fittype));
-if exist(gfname, 'file')==2
-    disp('Loading Grating RFs')
-    load(gfname)
-else
-
-    for iEx = 1:numel(sesslist)
-        if isempty(Sgt{iEx})
-            try
-                Exp = io.dataFactoryGratingSubspace(sesslist{iEx}, 'spike_sorting', sorter);
-                
-                tmp = grat_rf_basis(Exp, 'plot', true, 'debug', false);
-                tmp.sorter = sorter;
-                drawnow
-                
-                Sgt{iEx} = tmp;
-                
-            catch me
-                disp('ERROR ERROR')
-                disp(me.message)
-            end
-        end
-    end
+outdir = './output/fig02_grat_rf';
+overwrite = false;
+for isess = 1:numel(sesslist)
+    sessname = sesslist{isess};
+    fprintf('%d) %s\n\n', isess, sessname)
+    fname = fullfile(outdir, sessname);
     
-    save(gfname, '-v7.3', 'Sgt')
+    if exist(fname, 'file') && ~overwrite
+        fprintf('Loading...\n')
+        RFs = load(fname);
+
+    else
+        fprintf('Running Analyses...\n')
+        Exp = load(fullfile(datadir, sessname));
+
+        RFs = grat_rf_basis(Exp, 'plot', false, 'debug', false);
+
+        save(fname, '-v7.3', '-struct', 'RFs');
+
+    end
+
+    Sgt{isess} = RFs;
+    
+    
 end
 disp("Done")
 
-%% get waveform stats
-Waveforms = cell(numel(sesslist), 1);
-wname = fullfile('Data', 'waveforms.mat');
-if exist(wname, 'file')==2
-    disp('Loading Waveforms')
-    load(wname)
-else
+
+%% Visual Drive / Waveform Stats
+Wfs = cell(numel(sesslist),1);
+outdir = './output/fig02_waveforms';
+overwrite = false;
+
+for isess = 1:numel(sesslist)
+    sessname = sesslist{isess};
+    fprintf('%d) %s\n\n', isess, sessname)
+    fname = fullfile(outdir, sessname);
     
-    for iEx = 1:numel(sesslist)
-        if ~isempty(Srf{iEx})
-            Exp = io.dataFactory(sesslist{iEx}, 'spike_sorting', Srf{iEx}.sorter);
-            Waveforms{iEx} = io.get_waveform_stats(Exp.osp);
-        end
+    if exist(fname, 'file') && ~overwrite
+        s = load(fname);
+        vis = s.vis;
+
+    else
+        fprintf('Running Analyses...\n')
+
+        Exp = load(fullfile(datadir, sessname));
+
+        evalc("vis = io.get_visual_units(Exp, 'plotit', false, 'visStimField', 'BackImage');");
+        save(fname, '-v7.3', 'vis');
     end
-    save(wname, '-v7.3', 'Waveforms')
+
+    Wfs{isess} = vis;
+    
     
 end
-
 disp("Done")
+
+%% Make a table
+% Srf{isess}
+
+PAT = '(?<subject>\w+)_(?<date>\d{8})'; %(?<month>\d{2})(?<day>\d{2})_\.(?<ext>\w+)
+
+info = cellfun(@(x) regexp(x, PAT, 'names'), sesslist, 'uni', 1);
+subject = arrayfun(@(x) x.subject, info, 'uni', 0);
+date = arrayfun(@(x) datestr(datenum(x.date, 'yyyymmdd'), 'mm/dd/yyyy'), info, 'uni', 0);
+NC = cellfun(@(x) numel(x.fine.r2), Srf);
+VisuallyDriven = cellfun(@(x) sum(arrayfun(@(y) y.BackImage.sig<.05, x)), Wfs);
+HasRF = cellfun(@(x) sum(arrayfun(@(y) y.r2rf > .4, x.RFs)), Srf);
+
+table(subject, date, NC, VisuallyDriven, HasRF)
+
+%%
+isess = isess + 1;
+delta = (Srf{isess}.fine.temporalPref-Srf{isess}.fine.temporalNull)*1e3 + .1;
+sd = Srf{isess}.fine.temporalPrefSd*1e3 + .1;
+figure(1); clf,
+plot(delta./sd); hold on
+plot(xlim, [2 2])
+
+%% Non-parametric RF tuning 
+
+figure(1); clf
+sfs = [];
+oris = [];
+sfbw = [];
+oribw = [];
+threshs = [];
+
+for isess = 1:numel(Sgt)
+    disp(isess)
+    if isempty(Sgt{isess})
+        continue
+    end
+
+    NC = size(Sgt{isess}.srf,3);
+    
+    for cc = 1:NC
+        try
+        [con, ar, ctr, threshs(cc), maxout] = get_rf_contour(Sgt{isess}.xax(1,:), Sgt{isess}.yax(:,1)', Sgt{isess}.srf(:,:,cc), 'thresh', .5, 'plot', false);
+        
+        sfs = [sfs; ctr(2)];
+        oris = [oris; ctr(1)];
+        oribw = [oribw; max(con(:,1)) - min(con(:,1))];
+        sfbw = [sfbw; max(con(:,2)) - min(con(:,2))];
+        end
+    end
+
+end
+
+%%
+C = histcounts2(sfs, sfbw, 1.25.^(1:12),1.25.^(1:12));
+figure(2); clf
+imagesc(log10(C'))
+axis xy
+
+
+figure(1); clf
+
+
+subplot(1,2,1)
+plot(oris, oribw, 'o')
+
+
+subplot(1,2,2)
+plot(sfs, sfbw, 'o')
+
+
+%% Summary table
+set(groot, 'DefaultFigureVisible', 'on')
+
+
+%% print SRF summary
+for isess = 1:numel(Srf)
+    sessname = strrep(sesslist{isess},'.mat', '');
+    if isempty(Srf{isess})
+        if ~isempty(Sgt{isess})
+            fprintf('%d) %s \t t(spat)=0   \t\t t(grat)=%02.2f\n', isess, sessname, Sgt{isess}.numsamples/Sgt{isess}.frate)
+        else
+            fprintf('%d) %s \t t(spat)=0   \t\t t(grat)=0\n', isess, sessname);
+        end
+    else
+        if ~isempty(Sgt{isess})
+            fprintf('%d) %s \t t(spat)=%02.2f \t\t t(grat)=%02.2f\n', isess, sessname, Srf{isess}.fine.nsamples/Srf{isess}.fine.frate, Sgt{isess}.numsamples/Sgt{isess}.frate)
+        else
+            fprintf('%d) %s \t t(spat)=%02.2f \t\t t(grat)=0\n', isess, sessname, Srf{isess}.fine.nsamples/Srf{isess}.fine.frate)
+        end
+
+    end
+
+end
+
+%%
+
+for isess = 1:numel(Srf)
+
+    sessname = strrep(sesslist{isess},'.mat', '');
+    disp(sessname)
+    
+    if isempty(Srf{isess})
+        continue
+    end
+
+    NC = numel(Srf{isess}.coarse.numspikes);
+    sx = ceil(sqrt(NC));
+    sy = round(sqrt(NC));
+
+
+    figure(1); clf
+    ax = plot.tight_subplot(sx, sy, 0, 0, 0);
+
+    for cc = 1:NC
+        set(gcf, 'currentaxes', ax(cc))
+        imagesc(Srf{isess}.coarse.xax, Srf{isess}.coarse.yax, Srf{isess}.coarse.srf(:,:,cc)); hold on
+        plot(Srf{isess}.RFs(cc).roi([1 1 3 3 1]), Srf{isess}.RFs(cc).roi([2 4 4 2 2]), 'r', 'Linewidth', 2)
+        axis off
+        plot([0 0], ylim, 'y')
+        plot(xlim, [0 0], 'y')
+    end
+
+    set(gcf, 'PaperSize', [sx*2 sy*1.5], 'PaperPosition', [0 0 sx*2 sy*1.5])
+    saveas(gcf, fullfile('figures/fig02/sesscheck', sprintf('%s_rfcoarse.pdf', sessname)))
+
+
+    figure(2); clf
+    ax = plot.tight_subplot(sx, sy, 0, 0, 0);
+
+    for cc = 1:NC
+        set(gcf, 'currentaxes', ax(cc))
+        imagesc(Srf{isess}.RFs(cc).xax, Srf{isess}.RFs(cc).yax, Srf{isess}.RFs(cc).srf);
+        hold on
+        if ~isempty(Srf{isess}.RFs(cc).mu)
+            plot.plotellipse(Srf{isess}.RFs(cc).mu, Srf{isess}.RFs(cc).C, 1, 'r');
+        end
+        axis off
+    end
+
+    set(gcf, 'PaperSize', [sx*2 sy*1.5], 'PaperPosition', [0 0 sx*2 sy*1.5])
+    saveas(gcf, fullfile('figures/fig02/sesscheck', sprintf('%s_rffine.pdf', sessname)))
+
+    figure(3); clf
+    ax = plot.tight_subplot(sx, sy, 0.01, 0.01, 0.01);
+
+    for cc = 1:NC
+        set(gcf, 'currentaxes', ax(cc))
+        plot.errorbarFill(Srf{isess}.RFs(cc).timeax, Srf{isess}.RFs(cc).temporalPref, Srf{isess}.RFs(cc).temporalPrefSd, 'b'); hold on
+        plot.errorbarFill(Srf{isess}.RFs(cc).timeax, Srf{isess}.RFs(cc).temporalNull, Srf{isess}.RFs(cc).temporalNullSd, 'r'); hold on
+        plot([0 0], ylim, 'k')
+        plot(xlim, [0 0])
+        axis off
+    end
+
+    set(gcf, 'PaperSize', [sx*2 sy*1.5], 'PaperPosition', [0 0 sx*2 sy*1.5])
+    saveas(gcf, fullfile('figures/fig02/sesscheck', sprintf('%s_rftemporal.pdf', sessname)))
+end
+
+%%
+set(groot, 'DefaultFigureVisible', 'on')
+%%
+
+if ~isempty(Sgt{isess})
+    figure(3); clf
+    ax = plot.tight_subplot(sx, sy, 0, 0, 0);
+    for cc = 1:NC
+        set(gcf, 'currentaxes', ax(cc))
+        imagesc(Sgt{isess}.rf(:,:,cc));
+        axis off
+    end
+end
+
+
+
+%%
+% cc = cc + 1;
+isess = isess + 1;
+if isess > numel(Srf)
+    isess = 1;
+end
+sessname = strrep(sesslist{isess},'.mat', '');
+disp(sessname)
+NC = numel(Srf{isess}.coarse.r2);
+% if cc > NC
+%     cc = 1;
+% end
+
+mx = zeros(NC,1);
+arat = zeros(NC,1);
+
+level = 'coarse';
+for cc = 1:NC
+thresh=.5;
+rf = Srf{isess}.(level).srf(:,:,cc);
+[xx,yy] = meshgrid(Srf{isess}.(level).xax, Srf{isess}.(level).yax);
+
+mask = (hanning(Srf{isess}.(level).dim(1))*hanning(Srf{isess}.(level).dim(2))').^.25;
+rf = rf.*mask;
+rf = (rf - min(rf(:))) / (max(rf(:)) - min(rf(:)));
+
+[con, ar, ctr, maxoutrf] = get_contour(xx,yy,rf, 'thresh', thresh);
+
+k = convhull(con(:,1), con(:,2));
+arConv = polyarea(con(k,1), con(k,2));
+
+mx(cc) = maxoutrf;
+arat(cc) = ar ./ arConv;
+
+figure(10); clf
+imagesc(xx(1,:), yy(:,1), rf); hold on
+plot(con(:,1), con(:,2), 'r')
+plot(con(k,1), con(k,2), 'y')
+drawnow
+end
+
+figure(1); clf
+NC = numel(Srf{isess}.coarse.numspikes);
+sx = ceil(sqrt(NC));
+sy = round(sqrt(NC));
+ax = plot.tight_subplot(sx, sy, 0, 0, 0);
+
+[~, ind] = sort(arat - mx);
+
+for c = 1:NC
+    set(gcf, 'currentaxes', ax(c))
+    cc = ind(c);
+    imagesc(Srf{isess}.coarse.srf(:,:,cc))
+    axis off
+end
+
+%%
+
+cc = 1;
+NC = numel(Wfs{isess});
+Wfs{isess}(cc).waveform.isiV
+figure(1); clf
+amp = arrayfun(@(x) max(x.waveform.waveform(:)) - min(x.waveform.waveform(:)), Wfs{isess});
+isiV = arrayfun(@(x) x.waveform.isiV, Wfs{isess});
+vis = arrayfun(@(x) x.BackImage.sig, Wfs{isess});
+plot(isiV, amp, '.')
+
+numspikes = Srf{isess}.coarse.numspikes;
+
+
+
+
+
 %% Example units
-exs = [25, 27, 45, 45, 5]; % session #
-ccs = [9, 8, 19, 35, 14]; % unit #
+exs = 3+[25, 27, 45, 45, 5]; % session #
+% ccs = [8, 9, 8, 19, 35, 14]; % unit #
 
+exs = {'ellie_20190107.mat'};
+% ccs = [18]
 % ccs = 6;
 % exs = 10*ones(1,numel(ccs));
 % ex = ex - 1;
@@ -329,8 +360,13 @@ ccs = [9, 8, 19, 35, 14]; % unit #
 % if cc > size(Srf{ex}.coarse.rf,3)
 %     cc = 1;
 % end
-for ii = 1:numel(exs)
-    ex = exs(ii);
+
+% exs = 1;
+% ccs = 1;
+ccs = ccs + 1;
+
+for ii = 1%:numel(exs)
+    ex = find(strcmp(sesslist, exs{ii}));
     cc = ccs(ii);
     
     figure(1); clf
@@ -420,7 +456,7 @@ for ii = 1:numel(exs)
     ax2.XColor = [1 0 0];
     ax2.YColor = [1 0 0];
     ax2.Box = 'on';
-    saveas(gcf, fullfile(figDir, sprintf('example_%s_%d.pdf', sesslist{ex}, cc)))
+%     saveas(gcf, fullfile(figDir, sprintf('example_%s_%d.pdf', strrep(sesslist{ex}, '.mat', ''), cc)))
     
 end
 
@@ -445,6 +481,9 @@ cgs = [];
 mshift = [];
 sess = {};
 
+
+numspikes = [];
+
 wf = [];
 
 exnum = [];
@@ -452,6 +491,8 @@ exnum = [];
 zthresh = 8;
 for ex = 1:numel(Srf)
     
+    
+
     if ~isfield(Srf{ex}, 'fine') || ~isfield(Sgt{ex}, 'rffit') || (numel(Sgt{ex}.rffit) ~= numel(Srf{ex}.fine.rffit))
         continue
     end
@@ -460,6 +501,8 @@ for ex = 1:numel(Srf)
         continue
     end
         
+    numspikes = [numspikes; Srf{ex}.coarse.numspikes(:)];
+
     NC = numel(Srf{ex}.fine.rffit);
     for cc = 1:NC
         if ~isfield(Srf{ex}.fine.rffit(cc), 'mu')
@@ -468,12 +511,12 @@ for ex = 1:numel(Srf)
         end
         
         
-         mu = Srf{ex}.fine.rffit(cc).mu;
-         C = Srf{ex}.fine.rffit(cc).C;
+         mu = Srf{ex}.RFs(cc).mu;
+         C = Srf{ex}.RFs(cc).C;
          
          if isempty(Sgt{ex}.rffit(cc).r2) || isempty(Srf{ex}.fine.rffit(cc).r2)
              fprintf('Skipping because bad fit [%s] %d\n', sesslist{ex}, cc)
-             wf = [wf; Waveforms{ex}(cc)];
+             wf = [wf; Wfs{ex}(cc).waveform];
              oriPref = [oriPref; nan];
              oriBw = [oriBw; nan];
              sfPref = [sfPref; nan];
@@ -506,16 +549,18 @@ for ex = 1:numel(Srf)
          sigs = [sigs; Srf{ex}.fine.sig(cc)];
          sigg = [sigg; Sgt{ex}.sig(cc)];
         
-         r2 = [r2; Srf{ex}.fine.r2rf(cc)]; % store r-squared
-         ar = [ar; Srf{ex}.fine.rffit(cc).ar];
-         ecc = [ecc; Srf{ex}.fine.rffit(cc).ecc];
+         r2 = [r2; Srf{ex}.RFs(cc).r2rf]; % store r-squared
+         ar = [ar; Srf{ex}.RFs(cc).ar];
+%          ar = [ar; Srf{ex}.fine.conarea(cc)];
+%          ecc = [ecc; hypot(Srf{ex}.fine.conctr(cc,1), Srf{ex}.fine.conctr(cc,2))];
+         ecc = [ecc; hypot(mu(1), mu(2))];
          mshift = [mshift; Srf{ex}.fine.rffit(cc).mushift];
          
          ctr = [ctr; [numel(r2) numel(gtr2)]];
          
          cgs = [cgs; Srf{ex}.fine.cgs(cc)];
          
-         wf = [wf; Waveforms{ex}(cc)];
+         wf = [wf; Wfs{ex}(cc).waveform];
          sess = [sess; sesslist{ex}];
          
          exnum = [exnum; ex];
@@ -533,17 +578,30 @@ oriPref(oriPref > 180) = oriPref(oriPref > 180) - 180;
 
 fprintf('%d (Spatial) and %d (Grating) of %d Units Total are significant\n', sum(sigs), sum(sigg), numel(sigs))
 
-ecrl = arrayfun(@(x) x.ExtremityCiRatio(1), wf);
-ecru = arrayfun(@(x) x.ExtremityCiRatio(2), wf);
+% ecrl = arrayfun(@(x) x.ExtremityCiRatio(1), wf);
+% ecru = arrayfun(@(x) x.ExtremityCiRatio(2), wf);
 wfamp = arrayfun(@(x) x.peakval - x.troughval, wf);
+isiV = arrayfun(@(x) x.isiV, wf);
+
+%%
+six = r2 > .5;
+figure(1); clf  
+for ex = 1:17
+    sessname = strrep(sesslist{ex}, '.mat', '');
+    disp(sessname)
+    ix = six & ex==exnum;
+    plot(ecc(ix), ar(ix), 'o'); hold on
+end
+
 
 %% Rosa comparison Eccentricity plot
 % get index
-validwf = wfamp > 40; % only include units with an amplitude > 40 microvolts
-
-six = sigs==1 & mshift < 1.25;
-
-six = six & validwf;
+validwf = wfamp > 40 & numspikes > 100;% & ismember(exnum, [1 3:6 9 13:20 22:26]); % only include units with an amplitude > 40 microvolts
+% validwf = validwf & isiV < 1;
+six = r2 > .4 & validwf; %sigs==1 & mshift < 1.25;
+% six = six ;
+% six = six ;
+% six = six; % & validwf;
 fprintf('%d/%d units selective for space\n', sum(six), sum(validwf))
 
 eccx = .1:.1:20; % eccentricity for plotting fits
@@ -558,7 +616,6 @@ scaleFactor = sqrt(-log(.5))*2; % scaling to convert from gaussian SD to FWHM
 y = ar(six) * scaleFactor;
 
 hPlot = plot(x, y, 'o', 'Color', .8*[1 1 1], 'MarkerFaceColor', .2*[1 1 1], 'MarkerSize', 1.5, 'Linewidth', .25); hold on
-
 
 
 b0 = [0.764, 0.495 ,0.050]; % initialize with Rosa fit
@@ -620,13 +677,13 @@ text(.25, 5, sprintf('n=%d', sum(six)))
 plot.formatFig(gcf, [1.75 1.5], 'nature')
 
 
-
 saveas(gcf, fullfile(figDir, 'fig02_ecc_vs_RFsize.pdf'))
 
 
 %% Orientation
 addpath ~/Dropbox/MatlabCode/Repos/circstat-matlab/
 oriPref(angle(oriBw)~=0) = nan; % ignore untuned units
+validwf= wfamp > 40;
 gix = sigg==1 & ~isnan(oriPref) & angle(oriBw)==0 & oriBw < 90;
 gix = gix & validwf;
 fprintf('%d/%d units selective for Gratings\n', sum(gix), sum(validwf))
@@ -718,6 +775,11 @@ end
 
 xlim([-14 14])
 ylim([-10 10])
+
+%% 
+figure(10); clf
+ix = six & gix;
+plot(ecc(ix), sfPref(ix), 'o')
 
 %% plot session by session
 figure(10); clf

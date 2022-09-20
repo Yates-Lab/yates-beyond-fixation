@@ -7,6 +7,11 @@ ip.addParameter('plot', false)
 ip.parse(varargin{:});
 
 rfthresh = rf > ip.Results.thresh; %100*median(rfthresh(:));
+maxoutrf = nan;
+
+if numel(rf) ~= numel(xi)
+    [xi, yi] = meshgrid(xi, yi);
+end
 
 if ~any(rfthresh(:))
     xy = nan(1,2);
@@ -24,8 +29,8 @@ end
 [~, ind] = max(v);
 ind = bws(ind);
 
-c = contour(xi, yi, bw==ind, 1);
-cmask = contour(bw==ind, 1);
+c = contourc(xi(1,:), yi(:,1)', double(bw==ind), 1);
+cmask = contourc(double(bw==ind), 1);
 
 cinds = find(cmask(1,:)<=1);
 if numel(cinds)<2

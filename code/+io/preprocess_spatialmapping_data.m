@@ -38,13 +38,14 @@ ip.addParameter('cids', [])
 ip.addParameter('frate', 120)
 ip.addParameter('validTrials', [])
 ip.addParameter('fastBinning', true)
+ip.addParameter('smoothing', 0)
 ip.parse(varargin{:});
 
 verbose = ip.Results.verbose;
 
 % --- find valid trials
 if isempty(ip.Results.validTrials)
-    validTrials = intersect(io.getValidTrials(Exp, 'BigDots'), io.getValidTrials(Exp, 'Ephys'));
+    validTrials = intersect(io.getValidTrials(Exp, 'Dots'), io.getValidTrials(Exp, 'Ephys'));
 %     if isempty(validTrials)
 %         validTrials = intersect(io.getValidTrials(Exp, 'Gabor'), io.getValidTrials(Exp, 'Ephys'));
 %     end
@@ -168,25 +169,46 @@ end
 
 if ip.Results.fastBinning
     
+    
     xp = xPosition(valid,:);
     yp = yPosition(valid,:);
     
+%     iframe = 100;
+%     figure(1); clf
+%     subplot(1,3,1)
+%     plot(xp(iframe,:), yp(iframe,:), 'o')
+
     % pad by bin size for dots
-    sc = 2;
-    xp = [xp, xp + binSize/sc, xp - binSize/sc, xp, xp];
-    yp = [yp, yp, yp, yp+binSize/sc, yp - binSize/sc];
+%     sc = .7;
+%     xp = [xp, xp + binSize/sc, xp - binSize/sc, xp, xp];
+%     yp = [yp, yp, yp, yp+binSize/sc, yp - binSize/sc];
+
+%     subplot(1,3,2)
+%     plot(xp(iframe,:), yp(iframe,:), 'o')
+%     hold on
+%     plot(ROI([1 1]), ROI([2 4]), 'r')
+%     plot(ROI([1 3]), ROI([2 2]), 'r')
+%     plot(ROI([1 3]), ROI([4 4]), 'r')
+%     plot(ROI([3 3]), ROI([2 4]), 'r')
     
     NT = sum(valid);
     fr = repmat((1:NT)', 1,size(xp,2));
     
     xp(xp < ROI(1) | xp > ROI(3)) = nan;
     yp(yp < ROI(2) | yp > ROI(4)) = nan;
+
+%     plot(xp(iframe,:), yp(iframe,:), 'o')
     
     x = ceil(xp./binSize);
     y = ceil(yp./binSize);
     
     x = x - min(x(:));
     y = y - min(y(:));
+
+%     subplot(1,3,3)
+%     plot(x(iframe,:), y(iframe,:), 'o')
+%     xlim([0 round((ROI(3)-ROI(1))/binSize)])
+%     ylim([0 round((ROI(4)-ROI(2))/binSize)])
     
     good = ~(isnan(x) | isnan(y));
     good = good & x < numel(xax) & y<numel(yax) & x > 0 & y > 0;
@@ -200,10 +222,18 @@ if ip.Results.fastBinning
     
     sz = [max(y(:)) max(x(:))];
     ind = sub2ind(sz, y(:), x(:));
-    stimX = full(sparse(fr(:), ind, v(:), NT, prod(sz)));
+    stimX = sparse(fr(:), ind, v(:), NT, prod(sz));
+
     xax = xax(2:sz(2)+1); %edges
     yax = yax(2:sz(1)+1);  %+binSize/2;
     dims = sz;
+
+    if ip.Results.smoothing > 0
+        [xx,yy] = meshgrid(1:dims(2), 1:dims(1));
+        I = sparse(exp( -.5*hypot(xx(:)-xx(:)', yy(:)-yy(:)').^4/ip.Results.smoothing^2 ));
+        stimX = stimX * I;
+    end
+
 else
     [xx,yy] = meshgrid(xax, yax);
     
@@ -212,14 +242,17 @@ else
     stimX = zeros(sum(valid), prod(dims));
     tic
     if verbose
-        disp('Binning stimulus on grid')
+        disp('Slow binning stimulus on grid')
     end
     
     bs = binSize.^2;
+    
     for i = 1:NX
 %         stimX = stimX + double(hypot(xPosition(valid,i) - xx(:)', yPosition(valid,i) - yy(:)') < binSize);
         xdelta = hypot(xPosition(valid,i) - xx(:)', yPosition(valid,i) - yy(:)');
+
         stimX = stimX + exp( -xdelta.^2/2/bs );
+        toc
     end
 end
 

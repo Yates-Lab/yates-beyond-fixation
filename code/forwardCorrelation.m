@@ -6,10 +6,16 @@ function varargout = forwardCorrelation(Stim, Robs, win, inds, nbasis, validonly
 % ix = ecc < 5.2 & labels == 1;
 % ix = sum(conv2(double(ix), eye(nlags), 'full'),2) == nlags; % all timelags good
 % 
+if issparse(Stim) && issparse(Robs)
+    usesparse = true;
+    disp('use sparse')
+else
+    usesparse = false;
+end
 
 NT = size(Stim, 1);
 if nargin < 7 || isempty(normalize)
-    normalize = false;
+    normalize = true;
 end
 
 if nargin < 6 || isempty(validonly)
@@ -32,8 +38,11 @@ if nargin < 5 || isempty(nbasis)
    nbasis = nlags; 
 end
 
-
-Rdelta = Robs - mean(Robs);
+if usesparse
+    Rdelta = Robs;
+else
+    Rdelta = Robs - mean(Robs);
+end
 
 if nargout > 1
     getebars = true;
@@ -52,10 +61,19 @@ else
     B = max(1-xdiff/bs,0);
 end
 
+if usesparse
+    B = sparse(B);
+end
+
 % only use indices where all lags are valid
 if validonly
-    ix = abs(sum(conv2(double(ix), B, 'full'), 2) - sum(B(:)))<.1; % all timelags good
+    if usesparse
+        ix = abs(sum(sconv2(sparse(double(ix)), B, 'full'), 2) - sum(B(:)))<.1; % all timelags good
+    else
+        ix = abs(sum(conv2(double(ix), B, 'full'), 2) - sum(B(:)))<.1; % all timelags good
+    end
 end
+
 ix = find(ix);
 
 dims = size(Stim,2);
@@ -69,7 +87,12 @@ disp('Running forward correlation...')
 n = zeros(dims, nlags);
 for ii = 1:dims
 %     fprintf('%d/%d\n', ii, dims)
-        Xstim = conv2(Stim(:,ii), B, 'full');
+        if usesparse
+            Xstim = sconv2(Stim(:,ii), B, 'full');
+        else
+            Xstim = conv2(Stim(:,ii), B, 'full');
+        end
+
         Xstim = Xstim(1:end-nlags+1,:);
         if win(1)~=0
             Xstim = circshift(Xstim, win(1)); % shift back by the pre-stimulus lags
@@ -78,11 +101,13 @@ for ii = 1:dims
         n(ii,:) = sum(Xstim(ix,:))*B';
         
         if getebars
-            for cc = 1:NC
-                x = (Xstim(ix,:).*Rdelta(ix,cc))*B';
-                stas(:, ii, cc) = sum(x);
-                stasSd(:,ii,cc) = std(x);
-            end
+%             for cc = 1:NC
+%                 x = (Xstim(ix,:).*Rdelta(ix,cc))*B';
+%                 stas(:, ii, cc) = sum(x);
+%                 stasSd(:,ii,cc) = std(x);
+%             end
+            stas(:, ii, :) = B*(Xstim(ix,:)'*Rdelta(ix,:));
+            stasSd(:,ii,:) = B*(Xstim(ix,:).^2'*Rdelta(ix,:).^2);
         else
             stas(:, ii, :) = B*(Xstim(ix,:)'*Rdelta(ix,:));
         end
@@ -92,11 +117,19 @@ disp('Done')
 
 if normalize
     % normalize and get rid of NANS
+    n = max(n, 1);
+
     for cc = 1:NC
-        x = stas(:,:,cc);% ./ n';
-        x(n'==0) = 0;
-        x = x .* (n'./max(n(:)));
-        stas(:,:,cc) =  x;
+        stas(:,:,cc) = stas(:,:,cc) ./ n';
+        if getebars
+            stasSd(:,:,cc) = stasSd(:,:,cc)./ n';
+            stasSd(:,:,cc) = stasSd(:,:,cc) - stas(:,:,cc).^2;
+        end
+%         x = stas(:,:,cc);% ./ n';
+%         x(n'==0) = 0;
+%         x = x .* (n'./max(n(:)));
+%         stas(:,:,cc) =  x;
+         
     end
 end
 

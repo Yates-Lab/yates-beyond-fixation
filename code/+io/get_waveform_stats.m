@@ -190,9 +190,15 @@ for cc = 1:NC
     [~, CtrCh] = max(sum(S.templates(:,:,cc).^2));
     
     % check if waveform exceeds the confidence intervals at start time
-    ciHi = mean(S.ciHi(1:5,CtrCh, cc));
-    ciLow = mean(S.ciLow(1:5,CtrCh, cc));
-    ExtremityCiRatio = [trough./ciLow peak./ciHi];
+    if S.useWF
+        ciHi = mean(S.ciHi(1:5,CtrCh, cc));
+        ciLow = mean(S.ciLow(1:5,CtrCh, cc));
+        ExtremityCiRatio = [trough./ciLow peak./ciHi];
+    else
+        ciHi = nan;
+        ciLow = nan;
+        ExtremityCiRatio = [nan, nan];
+    end
     
 
     % fit line from peak to end of waveform
@@ -217,10 +223,15 @@ for cc = 1:NC
     
     % save out channel-centered waveform
     ctrChWaveform = S.templates(:,CtrCh, cc);
-    ctrChWaveformCiHi = S.ciHi(:,CtrCh, cc);
-    ctrChWaveformCiLo = S.ciLow(:,CtrCh, cc);
-    
-    if debug
+    if S.useWF
+        ctrChWaveformCiHi = S.ciHi(:,CtrCh, cc);
+        ctrChWaveformCiLo = S.ciLow(:,CtrCh, cc);
+    else
+        ctrChWaveformCiHi = nan * ctrChWaveform;
+        ctrChWaveformCiLo = nan * ctrChWaveform;
+    end
+
+    if debug && S.useWF
         subplot(2,3,[1 4], 'align')
         hold off
         t = osp.WFtax;

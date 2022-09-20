@@ -16,7 +16,6 @@ function [stat, opts] = spat_rf_reg(Exp, varargin)
 %   'win',       [-5 15]
 %   'numspace',  20
 %   'plot',      true
-%   'sdthresh',  4
 % Output:
 %   stat <struct>
 %   opts <struct>
@@ -29,8 +28,6 @@ ip.addParameter('win', [-5 15])
 ip.addParameter('numspace', 20)
 ip.addParameter('numlags', 3)
 ip.addParameter('plot', true)
-ip.addParameter('sdthresh', 4)
-ip.addParameter('boxfilt', 5)
 ip.addParameter('frate', 120)
 ip.addParameter('spikesmooth', 3)
 ip.addParameter('stat', [])
@@ -58,7 +55,8 @@ else
         'ROI', ip.Results.ROI*Exp.S.pixPerDeg, 'binSize', ip.Results.binSize*Exp.S.pixPerDeg, ...
         'eyePos', eyePos, 'frate', ip.Results.frate);
     
-    
+    numspikes = sum(RobsSpace);
+
     smwin = ip.Results.spikesmooth - mod(ip.Results.spikesmooth, 2) + 1;
     if smwin > 0
         RobsSpace = imboxfilt(RobsSpace, [smwin 1]);
@@ -70,7 +68,8 @@ else
     sx = ceil(sqrt(NC));
     sy = round(sqrt(NC));
     
-    fs_stim = round(1/median(diff(opts.frameTimes)));
+%     fs_stim = round(1/median(diff(opts.frameTimes)));
+    fs_stim = 1/ip.Results.frate;
     tax = 1e3*(win(1):win(2))/fs_stim;
     
     stat.timeax = tax;
@@ -81,6 +80,9 @@ else
     stat.ppd = Exp.S.pixPerDeg;
     stat.roi = ip.Results.ROI;
     stat.spatrf = zeros([opts.dims NC]);
+    stat.numspikes = numspikes;
+    stat.nsamples = size(Stim,1);
+    stat.frate = ip.Results.frate;
     
     stat.cgs = Exp.osp.cgs(:);
 end
@@ -92,9 +94,23 @@ end
 %% Build design matrix
 Xstim = makeStimRows(Stim, num_lags);
 
-% use indices while fixating    
-ecc = hypot(opts.eyePosAtFrame(:,1), opts.eyePosAtFrame(:,2))/Exp.S.pixPerDeg;
-valid = find(opts.eyeLabel==1 & ecc < 6.2);
+
+% use indices only while eye position is on the screen and fixating
+eyePosAtFrame = opts.eyePosAtFrame/Exp.S.pixPerDeg;
+% use indices only while eye position is on the screen
+scrnBnds = (Exp.S.screenRect(3:4) - Exp.S.centerPix) / Exp.S.pixPerDeg;
+scrnBnds = 1.5 * scrnBnds;
+
+ix = (eyePosAtFrame(:,1) + ip.Results.ROI(1)) >= -scrnBnds(1) & ...
+    (eyePosAtFrame(:,1) + ip.Results.ROI(3)) <= scrnBnds(1) & ...
+    (eyePosAtFrame(:,2) + ip.Results.ROI(2)) >= -scrnBnds(2) & ...
+    (eyePosAtFrame(:,2) + ip.Results.ROI(4)) <= scrnBnds(2);
+
+fprintf('%02.2f%% of gaze positions are safely on screen\n', 100*mean(ix))
+
+numspikes = sum(RobsSpace(ix,:));
+
+valid = find(opts.eyeLabel==1 & ix);
 
 CpriorInv = qfsmooth3D([num_lags, fliplr(opts.dims)], 1);
 CpriorInv = CpriorInv + .5*eye(size(CpriorInv,2));
@@ -128,21 +144,8 @@ end
 % get best regularization
 [rmax, id] = max(r2,[],2);
 id = min(id+2, size(r2,2));
-% figure(1); clf
-% imagesc(r2); hold on
-% plot(id, 1:NC, 'ko')
-%     
-% if ip.Results.plot
-%     figure(2); clf
-%     plot(rmax)
-%     drawnow
-% end
 
-if ip.Results.plot
-    figure(1); clf
-    sx = ceil(sqrt(NC));
-    sy = round(sqrt(NC));
-end
+
 
 dims = opts.dims;
 nstim = size(Stim,2);
@@ -153,19 +156,91 @@ temporalNull = zeros(diff(win)+1, NC);
 temporalNullSd = zeros(diff(win)+1, NC);
 peaklag = zeros(NC,1);
 srf = zeros([dims, NC]);
+contours = cell(NC,1);
+conarea = nan(NC,1);
+conctr = nan(NC,2);
+conthresh = nan(NC,1);
+conmaxout = nan(NC,1);
+conconvarea = nan(NC,1);
+
+if ip.Results.plot
+    fig = figure(1); clf
+    sx = ceil(sqrt(NC));
+    sy = round(sqrt(NC));
+end
+
 for cc = 1:NC
     mrf(:,:,cc) = reshape(ws(:,cc,id(cc)), [num_lags nstim]);
     
     % get peak lag
     w = mrf(:,:,cc);
-    [pl,~] = find(w==max(w(:)));
-    pl = pl(end);
-    % --- get temporal rf using forward correlation
+
+    rf = reshape(w, [num_lags, dims]);
+
+    adiff = abs(rf - median(rf(:))); % positive difference
+    mad = median(adiff(:)); % median absolute deviation
     
-    % mask out preferred stimulus
-    mask = w(pl,:) ./ max(w(pl,:));
+    adiff = (rf - median(rf(:))) ./ mad; % normalized (units of MAD)
+    
+    % compute threshold using pre-stimulus lags
+    thresh = max(max(max(adiff(1,:,:))), .7*max(adiff(:)));
+    
+    % threshold and find the largest connected component
+    bw = bwlabeln(adiff > thresh);
+    s = regionprops3(bw);
+
+    if ~isempty(s)
+        % constrain when the peak lag is viable
+        [~, ind] = sort(s.Volume, 'descend');
+        pl = round(s.Centroid(ind(1),2));
+        plags = min(max(1, pl + [-1 0 1]), num_lags);
+
+
+        % --- get temporal rf using forward correlation
+
+        % get RF contour, center, area
+        rf = reshape(mean(w(plags,:)), dims);
+
+    else
+       
+        [pl,~] = find(w == max(w(:)));
+        rf = reshape(w(max(pl),:),dims);
+
+    end
+
+%     if numel(s) > 3
+%         disp('Too many Centroids. skipping.')
+%         % no connected components found (nothing crossed threshold)
+%         continue
+%     end
+
+    
+%     figure(2)
+%     for ilag = 1:num_lags
+%         subplot(2,ceil(num_lags/2), ilag)
+%         imagesc(reshape(w(ilag,:), dims), [min(w(:)), max(w(:))])
+%     end
+try
+    [con, ar, ctr, thresh, maxoutrf] = get_rf_contour(stat.xax, stat.yax, rf, 'upsample', 4, 'thresh', .7, 'plot', false);
+    contours{cc} = con;
+    conarea(cc) = ar;
+    conctr(cc,:) = ctr;
+    conthresh(cc) = thresh;
+    conmaxout(cc) = maxoutrf;
+    
+    k = convhull(con(:,1), con(:,2));
+    arConv = polyarea(con(k,1), con(k,2));
+    conconvarea(cc) = arConv;
+
+    % mask in RF and out of RF
+    maskPref = poly2mask(interp1(stat.xax, 1:numel(stat.xax), con(:,1)), interp1(stat.yax, 1:numel(stat.yax), con(:,2)), size(rf,1), size(rf,2));
+    maskNull = ~maskPref;
+catch
+    pl = pl(end);
+    mask = (w(pl,:) - min(w(pl,:))) / (max(w(pl,:)) - min(w(pl,:)));
     maskPref = mask>.7;
     maskNull = mask<.3;
+end
     
     % preferred stim
     X = Stim*maskPref(:);
@@ -188,6 +263,7 @@ for cc = 1:NC
     temporalNullSd(:,cc) = sd*fs_stim;
     
     if ip.Results.plot
+        figure(fig)
         subplot(sx, sy, cc)
         plot.errorbarFill(1:(diff(win)+1), temporalPref(:,cc), temporalPrefSd(:,cc), 'b', 'FaceColor', 'b'); hold on
         plot.errorbarFill(1:(diff(win)+1), temporalNull(:,cc), temporalNullSd(:,cc), 'r', 'FaceColor', 'r'); hold on
@@ -209,9 +285,18 @@ stat.temporalPref = temporalPref;
 
 stat.peaklag = zeros(NC,1);
 stat.sdbase = zeros(NC,1);
-stat.r2 = zeros(NC,1);
-stat.r2rf = rmax;
+stat.r2 = rmax;
+stat.r2rf = nan*rmax;
 stat.lambdamax = lambdas(id)';
+
+% save contours
+stat.contours = contours;
+stat.conarea = conarea;
+stat.conctr = conctr;
+stat.conthresh = conthresh;
+stat.conmaxout = conmaxout;
+stat.conconvarea = conconvarea;
+
 for cc = 1:NC
     stat.rffit(cc).warning = 1;
 end
@@ -303,7 +388,8 @@ for cc = 1:NC
         % get r2
         Ihat = gfun(phat, X);
         r2 = rsquared(I(:), Ihat(:));
-        
+        stat.r2rf(cc) = r2;
+
         % convert multivariate gaussian to ellipse
         trm1 = (C(1) + C(4))/2;
         trm2 = sqrt( ((C(1) - C(4))/2)^2 + C(2)^2);

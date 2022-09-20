@@ -1,172 +1,120 @@
 
 %% Load session
-datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'preprocessed');
-processedFileName = 'allen_20220805.mat';
-fname = fullfile(datadir, processedFileName);
 
-assert(exist(fname, 'file'), "export_hires: file does note exist. run step 01 first")
+datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'hires');
+outputdir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'stim_movies');
+sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
 
-Exp = load(fname);
+flist = dir(fullfile(outputdir, '*.hdf5'));
 
-trialIdx = io.getValidTrials(Exp, 'Gabor');
+% Loop over sessions and import (this will be super slow)
+for isess = 1:numel(sesslist)
+    processedFileName = sesslist{isess};
+    fname = fullfile(datadir, processedFileName);
+    sessname = strrep(processedFileName, '.mat', '');
 
-iTrial = 1;
-Exp.D{trialIdx(iTrial)}.PR
+    exportexists=sum(arrayfun(@(x) contains(x.name, sessname), flist))>0;
+    fprintf('%d) %d\n', isess, exportexists)
 
-%% get RFs
+    %     assert(sum(arrayfun(@(x) contains(x.name, sessname), flist))==0, 'export_hires: session already exists')
 
-dotTrials = io.getValidTrials(Exp, 'Dots');
-if ~isempty(dotTrials)
-    
-    BIGROI = [-1 -.5 1 .5]*5;
-%     BIGROI = [-5 -5 5 5];
-%     eyePos = C.refine_calibration();
-    eyePos = Exp.vpx.smo(:,2:3);
-%     eyePos(:,1) = -eyePos(:,1);
-%     eyePos(:,2) = -eyePos(:,2);
-    binSize = .2;
-    Frate = 60;
-    [Xstim, RobsSpace, opts] = io.preprocess_spatialmapping_data(Exp, ...
-        'ROI', BIGROI*Exp.S.pixPerDeg, 'binSize', binSize*Exp.S.pixPerDeg, ...
-        'eyePosExclusion', 2e3, ...
-        'eyePos', eyePos, 'frate', Frate, 'fastBinning', true);
-    
-    % use indices while fixating
-    ecc = hypot(opts.eyePosAtFrame(:,1), opts.eyePosAtFrame(:,2))/Exp.S.pixPerDeg;
-    ix = opts.eyeLabel==1 & ecc < 5.2;
-    
-end
-
-
-spike_rate = mean(RobsSpace)*Frate;
-
-figure(1); clf
-plot.raster(Exp.osp.st, Exp.osp.clu, 1); hold on
-ylabel('Unit ID')
-xlabel('Time (seconds)')
-cmap = lines;
-stims = {'Dots', 'BackImage', 'Gabor'};
-
-for istim = 1:numel(stims)
-    validTrials = io.getValidTrials(Exp, stims{istim});
-    for iTrial = validTrials(:)'
-        t0 = Exp.ptb2Ephys(Exp.D{iTrial}.STARTCLOCKTIME);
-        t1 = Exp.ptb2Ephys(Exp.D{iTrial}.ENDCLOCKTIME);
-        yd = ylim;
-        h(istim) = fill([t0 t0 t1 t1], [yd(1) yd(2) yd(2) yd(1)], 'k', 'FaceColor', cmap(istim,:), 'FaceAlpha', .5, 'EdgeColor', 'none');
+    assert(exist(fname, 'file'), "export_hires: preprocessed file does not exist. run step 01 first")
+    if exportexists
+        disp('Export exists. skipping')
+        continue
     end
-end
+    
+    Exp = load(fname);
 
-legend(h, stims)
+    %% get RFs
 
-%% threshold units by spike rate
-figure(2); clf; set(gcf, 'Color', 'w')
-subplot(3,1,1:2)
-h = [];
-h(1) = stem(spike_rate, '-ok', 'MarkerFaceColor', 'k', 'MarkerSize', 4);
+    ROI = [-1 -1 1 1]*3;
+    binSize = .25;
+    Frate = 120;
+    eyeposexclusion = 20;
+    win = [-1 20];
 
-ylabel('Firing Rate During Stimulus')
-hold on
-goodunits = find(spike_rate > .5);
-h(2) = plot(goodunits, spike_rate(goodunits), 'og', 'MarkerFaceColor', 'g', 'MarkerSize', 4);
-h(3) = plot(xlim, [1 1], 'r-');
-legend(h, {'All units', 'Good Units', '1 Spike/Sec'}, 'Location', 'Best')
+    [Xstim, RobsSpace, opts] = io.preprocess_spatialmapping_data(Exp, ...
+        'ROI', ROI*Exp.S.pixPerDeg, 'binSize', binSize*Exp.S.pixPerDeg, ...
+        'eyePosExclusion', eyeposexclusion * Exp.S.pixPerDeg, ...
+        'eyePos', Exp.vpx.smo(:,2:3), 'frate', Frate, ...
+        'fastBinning', true, ...
+        'smoothing', 2);
 
-subplot(3,1,3)
-stem(spike_rate, '-ok', 'MarkerFaceColor', 'k', 'MarkerSize', 4)
-ylim([0, 1])
-xlabel('Unit #')
-ylabel('Firing rate of bad units')
+    % use indices only while eye position is on the screen
+    scrnBnds = (Exp.S.screenRect(3:4) - Exp.S.centerPix) / Exp.S.pixPerDeg;
+    scrnBnds = 1.5 * scrnBnds;
+    eyePosAtFrame = opts.eyePosAtFrame/Exp.S.pixPerDeg;
 
+    ix = (eyePosAtFrame(:,1) + ROI(1)) >= -scrnBnds(1) & ...
+        (eyePosAtFrame(:,1) + ROI(3)) <= scrnBnds(1) & ...
+        (eyePosAtFrame(:,2) + ROI(2)) >= -scrnBnds(2) & ...
+        (eyePosAtFrame(:,2) + ROI(4)) <= scrnBnds(2);
 
-fprintf('%d / %d fire enough spikes to analyze\n', numel(goodunits), size(RobsSpace,2))
-drawnow
+    fprintf('%02.2f%% of gaze positions are safely on screen\n', 100*mean(ix))
 
+    numspikes = sum(RobsSpace(ix,:));
 
+    % forward correlation
+    stas = forwardCorrelation(full(Xstim), sum(RobsSpace-mean(RobsSpace, 1),2), win, find(ix), [], true, false);
 
-%% run forward correlation on the average across all units to get a single RF to set the ROI
-win = [-1 10];
-close all
-figure(1); clf
-stas = forwardCorrelation(Xstim, mean(RobsSpace,2), win);
-stas = stas / std(stas(:)) - mean(stas(:));
-wm = [min(stas(:)) max(stas(:))];
-nlags = size(stas,1);
-for ilag = 1:nlags
-    subplot(2, ceil(nlags/2), ilag)
-    imagesc(opts.xax/Exp.S.pixPerDeg, opts.yax/Exp.S.pixPerDeg, reshape(stas(ilag, :), opts.dims), wm)
-    title(sprintf('lag: %02.2f', ilag*16))
+    close all
+    figure(1); clf
+    % stas = forwardCorrelation(Xstim, mean(RobsSpace,2), win);
+    stas = stas / std(stas(:)) - mean(stas(:));
+    wm = [min(stas(:)) max(stas(:))];
+    nlags = size(stas,1);
+    for ilag = 1:nlags
+        subplot(2, ceil(nlags/2), ilag)
+        imagesc(opts.xax/Exp.S.pixPerDeg, opts.yax/Exp.S.pixPerDeg, reshape(stas(ilag, :), opts.dims), wm)
+        title(sprintf('lag: %02.2f', ilag*16))
+        axis xy
+    end
+
+    %% find ROI
+
+    winsize = 80;
+    rf = reshape(std(stas), opts.dims);
+    rf = (rf - min(rf(:))) / (max(rf(:)) - min(rf(:)));
+    [con, ar, ctr] = get_rf_contour(opts.xax, opts.yax, rf, 'thresh', .7);
+    imagesc(opts.xax, opts.yax, rf);
+    hold on
+    plot(ctr(1), ctr(2), 'or')
+    S.rect = round([ctr ctr]) + [-1 -1 1 1]*winsize/2;
+
+    in_pixels = false;
+    if in_pixels
+        ppd = 1;
+    else
+        ppd = Exp.S.pixPerDeg;
+    end
+
+    figure(2); clf
+    imagesc(opts.xax/ppd, opts.yax/ppd, rf)
     axis xy
-end
 
-%% find ROI
-ilag = 4;
-S.rect = [-80 -50 10 50];
-% S.rect = 
-figure(1); clf
-in_pixels = false;
-if in_pixels
-    ppd = 1;
-else
-    ppd = Exp.S.pixPerDeg;
-end
+    hold on
+    plot(S.rect([1 3])/ppd, S.rect([2 2])/ppd, 'r', 'Linewidth', 2)
+    plot(S.rect([1 3])/ppd, S.rect([4 4])/ppd, 'r', 'Linewidth', 2)
+    plot(S.rect([1 1])/ppd, S.rect([2 4])/ppd, 'r', 'Linewidth', 2)
+    plot(S.rect([3 3])/ppd, S.rect([2 4])/ppd, 'r', 'Linewidth', 2)
+    title('Average Spatial RF & ROI')
+    xlabel('Azimuth (pixels)')
+    ylabel('Elevation (pixels)')
 
-imagesc(opts.xax/ppd, opts.yax/ppd, reshape(stas(ilag, :), opts.dims))
-axis xy
+    plot.fixfigure(gcf, 12, [4 4]);
+    saveas(gcf, fullfile('figures/hires_export', sprintf('%s_roi.pdf', strrep(processedFileName, '.mat', ''))) )
 
-hold on
-plot(S.rect([1 3])/ppd, S.rect([2 2])/ppd, 'r', 'Linewidth', 2)
-plot(S.rect([1 3])/ppd, S.rect([4 4])/ppd, 'r', 'Linewidth', 2)
-plot(S.rect([1 1])/ppd, S.rect([2 4])/ppd, 'r', 'Linewidth', 2)
-plot(S.rect([3 3])/ppd, S.rect([2 4])/ppd, 'r', 'Linewidth', 2)
-title('Average Spatial RF & ROI')
-xlabel('Azimuth (pixels)')
-ylabel('Elevation (pixels)')
 
-%% If it didn't work, run it again on each unit and plot
-% otherwise, skip this cell
-
-win = [-1 10];
-stasFull = forwardCorrelation(Xstim, RobsSpace(:,goodunits), win);
-
-for cc = 1:size(stasFull,3)
-
-% stas = forwardCorrelation(Xstim, RobsSpace(:,cc), win);
-% close all
-figure(1)
-stas = stasFull(:,:,cc);
-stas = stas / std(stas(:)) - mean(stas(:));
-wm = [min(stas(:)) max(stas(:))];
-nlags = size(stas,1);
-try
-for ilag = 1:nlags
-    subplot(2, ceil(nlags/2), ilag)
-    imagesc(opts.xax/Exp.S.pixPerDeg, opts.yax/Exp.S.pixPerDeg, reshape(stas(ilag, :), opts.dims), wm)
-    title(sprintf('lag: %02.2f', ilag*16))
-    axis xy
-end
-end
-drawnow
+    %% Do high-res reconstruction using PTB (has to replay the whole experiment)
+    Exp.FileTag = processedFileName;
+    % pixels run down so enforce this here
+    S.rect([2 4]) = sort(-S.rect([2 4]));
+    
+    fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true);
 
 end
 
-%% Do high-res reconstruction using PTB (has to replay the whole experiment)
-Exp.FileTag = S.processedFileName;
-% pixels run down so enforce this here
-S.rect([2 4]) = sort(-S.rect([2 4]));
-
-% fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim'}, 'overwrite', false);
-
-%%
-fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'FixFlashGabor', 'Gabor', 'BackImage'}, 'GazeContingent', true, 'includeProbe', true);
-
-%% no gaze correction, no fixation point
-fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'FixFlashGabor'}, 'GazeContingent', false, 'includeProbe', false);
-
-%% gaze correction, no fixation point
-fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'FixFlashGabor'}, 'GazeContingent', true, 'includeProbe', false);
-%%
-fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'FixFlashGabor'}, 'GazeContingent', false, 'includeProbe', true);
 %% Copy to server
 server_string = 'jake@bancanus'; %'jcbyts@sigurros';
 output_dir = '/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'; %/home/jcbyts/Data/MitchellV1FreeViewing/stim_movies/';

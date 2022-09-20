@@ -4,10 +4,21 @@ function [con, ar, ctr, thresh, maxoutrf] = get_rf_contour(xi,yi,rf,varargin)
 
 ip = inputParser();
 ip.addParameter('thresh', .5)
+ip.addParameter('upsample', 1)
 ip.addParameter('plot', false)
 ip.parse(varargin{:});
 
 rf = (rf - min(rf(:))) / (max(rf(:)) - min(rf(:)));
+
+if numel(rf) ~= numel(xi)
+    [xi, yi] = meshgrid(xi, yi);
+end
+
+if ip.Results.upsample > 1
+    xi = imresize(xi, ip.Results.upsample);
+    yi = imresize(yi, ip.Results.upsample);
+    rf = imresize(rf, ip.Results.upsample);
+end
 
 thresh0 = ip.Results.thresh;
 if thresh0 > 1

@@ -6,7 +6,7 @@ ip.addParameter('plotit', false)
 ip.addParameter('visStimField', 'BackImage')
 ip.addParameter('ROI', [-100 -100 100 100])
 ip.addParameter('binSize', 10)
-ip.addParameter('waveforms', nan)
+ip.addParameter('waveforms', [])
 ip.addParameter('numTemporalBasis', 5)
 ip.parse(varargin{:});
 
@@ -69,7 +69,7 @@ for cc = 1:NC
         if numel(validTrials) > 10
             Stmp.(stimSets{iStim}).stimFr = mean(stimFr(validTrials));
             Stmp.(stimSets{iStim}).isiFr = mean(isiFr(validTrials));
-            Stmp.(stimSets{iStim}).sig = ismodulated(stimFr, isiFr, validTrials);
+            [~, Stmp.(stimSets{iStim}).sig] = ismodulated(stimFr, isiFr, validTrials);
         end
     end
 
@@ -122,6 +122,8 @@ for cc = 1:NC
     Stmp.isiCtr = nspks;
     Stmp.isiRate = Stmp.isiViolations / mrate;
 
+    Stmp.waveform = W(cc);
+
     if plotit
         figure(1); clf
 
@@ -164,7 +166,7 @@ end
 
 
 function [isviz,pval,stats] = ismodulated(stimFr, isiFr, validTrials)
-sfr = stimFr(validTrials(1:end-1));
-ifr = isiFr(validTrials(1:end-1));
-% paired ttest
-[isviz, pval, stats] = ttest(sfr, ifr, 'tail', 'right', 'alpha', 0.05/numel(sfr)); % scale alpha by the number of trials (more trials, more conservative)
+    sfr = stimFr(validTrials(1:end-1));
+    ifr = isiFr(validTrials(1:end-1));
+    % paired ttest
+    [isviz, pval, stats] = ttest(sfr, ifr, 'tail', 'right', 'alpha', 0.001); % 5/numel(sfr) scale alpha by the number of trials (more trials, more conservative)
