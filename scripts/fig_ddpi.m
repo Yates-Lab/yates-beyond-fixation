@@ -1,10 +1,17 @@
 
+%% add paths
+user = 'jakelaptop';
+addFreeViewingPaths(user);
+addpath scripts/
+figDir = 'figures/supplemental';
 
 %% Load data
+datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'hires');
+sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
+
 close all
-sessId = 'logan_20200304';
-spike_sorting = 'kilowf';
-[Exp, S] = io.dataFactory(sessId, 'spike_sorting', spike_sorting, 'cleanup_spikes', 0);
+sessId = 'logan_20200304.mat';
+Exp = load(fullfile(datadir, sessId));
 
 eyePosOrig = Exp.vpx.smo(:,2:3);
 
@@ -71,26 +78,18 @@ end
 
 ylim([-1 1]*40)
 
-saveas(gcf, 'Figures/manuscript_freeviewing/fig_ExampleFixation.pdf')
+saveas(gcf, fullfile(figDir, 'fig_ExampleFixation.pdf'))
 
 %% Loop over sessions, get distribution
 eyesmoothing = 19;
-
-% get valid sessions with DDPI eye tracker
-meta_file = fullfile(fileparts(which('addFreeViewingPaths')), 'Data', 'datasets.xls');
-data = readtable(meta_file);
-
-sessids = intersect( find(strcmp(data.Chamber, 'V1')) , find(strcmp(data.Eyetracker, 'DDPIv1')));
-sessids(1:13) = []; % remove sessions that don't have FixRsvpStim
-
 bins = linspace(-1, 1, 100);
-nsess = numel(sessids);
+nsess = numel(sesslist);
 
 Fstat = repmat(struct('sessid', [], 'trials', [], 'bins', bins, 'cnt', []), nsess,1);
 
 for isess = 1:nsess
     
-    [Exp, S] = io.dataFactory(sessids(isess));
+    Exp = load(fullfile(datadir, sesslist{isess}));
     
     eyePosOrig = Exp.vpx.smo(:,2:3);
     
@@ -115,6 +114,7 @@ for isess = 1:nsess
         n(bad) = [];
     else
         fprintf("No FixRsvpStim Trials in this dataset\n")
+        continue
     end
     
     eyetime = Exp.vpx2ephys(Exp.vpx.smo(:,1));
@@ -167,7 +167,6 @@ for isess = 1:nsess
     Fstat(isess).trial = trial;
     
     
-    
 end
 
 %% plot fixation scatter
@@ -203,7 +202,7 @@ xlabel('Horizontal (arcmin)')
 ylabel('Vertical position (arcmin)')
 
 plot.fixfigure(gcf, 7, [2.5 2])
-saveas(gcf, 'Figures/manuscript_freeviewing/fig_FixationDistribution.pdf')
+saveas(gcf, fullfile(figDir, 'fig_FixationDistribution.pdf'))
 
 %%
 
@@ -225,7 +224,7 @@ xlabel('Miscrosaccade / Sec')
 ylabel('Proportion')
 
 plot.fixfigure(gcf, 7, [2.5 2])
-saveas(gcf, 'Figures/manuscript_freeviewing/fig_MicrosacRate.pdf')
+saveas(gcf, fullfile(figDir, 'fig_MicrosacRate.pdf'))
 
 fprintf('Microsaccade rate:\nmedian = %02.2f [%02.2f, %02.2f]\n', median(nsac./fdur), bootci(1000, @median, nsac./fdur))
 

@@ -3,7 +3,8 @@ user = 'jakelaptop';
 addFreeViewingPaths(user);
 addpath scripts/
 figDir = 'figures/fig02';
-
+% fid = 1; % output file id (1 dumps to the command window)
+fid = fopen(fullfile(figDir, 'fig02_summary.txt'), 'w');
 datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'preprocessed');
 sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
 
@@ -37,22 +38,20 @@ end
 disp("Done")
 set(groot, 'DefaultFigureVisible', 'on')
 
-%% Grating RFs
+%% Loop over sessions, get Grating RFs
 Sgt = cell(numel(sesslist),1);
 fittype = 'basis';
 outdir = './output/fig02_grat_rf';
 overwrite = false;
 for isess = 1:numel(sesslist)
     sessname = sesslist{isess};
-    fprintf('%d) %s\n\n', isess, sessname)
+%     fprintf('%d) %s\n\n', isess, sessname)
     fname = fullfile(outdir, sessname);
     
     if exist(fname, 'file') && ~overwrite
-        fprintf('Loading...\n')
         RFs = load(fname);
 
     else
-        fprintf('Running Analyses...\n')
         Exp = load(fullfile(datadir, sessname));
 
         RFs = grat_rf_basis(Exp, 'plot', false, 'debug', false);
@@ -68,14 +67,13 @@ end
 disp("Done")
 
 
-%% Visual Drive / Waveform Stats
+%% Loop over sessions, measure Visual Drive / Waveform Stats
 Wfs = cell(numel(sesslist),1);
 outdir = './output/fig02_waveforms';
 overwrite = false;
-
+disp("")
 for isess = 1:numel(sesslist)
     sessname = sesslist{isess};
-    fprintf('%d) %s\n\n', isess, sessname)
     fname = fullfile(outdir, sessname);
     
     if exist(fname, 'file') && ~overwrite
@@ -83,8 +81,6 @@ for isess = 1:numel(sesslist)
         vis = s.vis;
 
     else
-        fprintf('Running Analyses...\n')
-
         Exp = load(fullfile(datadir, sessname));
 
         evalc("vis = io.get_visual_units(Exp, 'plotit', false, 'visStimField', 'BackImage');");
@@ -97,275 +93,47 @@ for isess = 1:numel(sesslist)
 end
 disp("Done")
 
-%% Make a table
-% Srf{isess}
+%% Make a table to summarize number of units, success rate, 
 
 PAT = '(?<subject>\w+)_(?<date>\d{8})'; %(?<month>\d{2})(?<day>\d{2})_\.(?<ext>\w+)
+spike_thresh = 200;
+nboot = 500;
+wfampthresh = 40;
 
 info = cellfun(@(x) regexp(x, PAT, 'names'), sesslist, 'uni', 1);
 subject = arrayfun(@(x) x.subject, info, 'uni', 0);
 date = arrayfun(@(x) datestr(datenum(x.date, 'yyyymmdd'), 'mm/dd/yyyy'), info, 'uni', 0);
-NC = cellfun(@(x) numel(x.fine.r2), Srf);
+NumUnitsTotal = cellfun(@(x) numel(x.fine.r2), Srf);
+NumUnitsSpikesThresh = cellfun(@(x,y) sum(x.fine.numspikes>spike_thresh & y.numspikes > spike_thresh), Srf, Sgt);
 VisuallyDriven = cellfun(@(x) sum(arrayfun(@(y) y.BackImage.sig<.05, x)), Wfs);
 HasRF = cellfun(@(x) sum(arrayfun(@(y) y.r2rf > .4, x.RFs)), Srf);
 
-table(subject, date, NC, VisuallyDriven, HasRF)
-
-%%
-isess = isess + 1;
-delta = (Srf{isess}.fine.temporalPref-Srf{isess}.fine.temporalNull)*1e3 + .1;
-sd = Srf{isess}.fine.temporalPrefSd*1e3 + .1;
-figure(1); clf,
-plot(delta./sd); hold on
-plot(xlim, [2 2])
-
-%% Non-parametric RF tuning 
-
-figure(1); clf
-sfs = [];
-oris = [];
-sfbw = [];
-oribw = [];
-threshs = [];
-
-for isess = 1:numel(Sgt)
-    disp(isess)
-    if isempty(Sgt{isess})
-        continue
-    end
-
-    NC = size(Sgt{isess}.srf,3);
-    
-    for cc = 1:NC
-        try
-        [con, ar, ctr, threshs(cc), maxout] = get_rf_contour(Sgt{isess}.xax(1,:), Sgt{isess}.yax(:,1)', Sgt{isess}.srf(:,:,cc), 'thresh', .5, 'plot', false);
-        
-        sfs = [sfs; ctr(2)];
-        oris = [oris; ctr(1)];
-        oribw = [oribw; max(con(:,1)) - min(con(:,1))];
-        sfbw = [sfbw; max(con(:,2)) - min(con(:,2))];
-        end
-    end
-
-end
-
-%%
-C = histcounts2(sfs, sfbw, 1.25.^(1:12),1.25.^(1:12));
-figure(2); clf
-imagesc(log10(C'))
-axis xy
+DurationGratings = cellfun(@(x) x.numsamples/x.frate, Sgt);
+DurationSpatialDots = cellfun(@(x) x.fine.nsamples/x.fine.frate, Srf);
+T = table(subject, date, NumUnitsTotal, NumUnitsSpikesThresh, VisuallyDriven, HasRF, DurationGratings, DurationSpatialDots);
 
 
-figure(1); clf
+m = median(DurationGratings);
+mci = bootci(nboot, @median, DurationGratings);
+fprintf(fid, "Grating stimulus was run for %2.2f [%2.2f, %2.2f] seconds\n", m, mci(1), mci(2));
+fprintf(fid, "Minimum duration was %2.2f seconds\n\n", min(DurationGratings));
 
+m = median(DurationSpatialDots);
+mci = bootci(nboot, @median, DurationSpatialDots);
+fprintf(fid, "Spatial mapping stimulus was run for %2.2f [%2.2f, %2.2f] seconds\n", m, mci(1), mci(2));
+fprintf(fid, "Minimum duration was %2.2f seconds\n\n", min(DurationSpatialDots));
 
-subplot(1,2,1)
-plot(oris, oribw, 'o')
-
-
-subplot(1,2,2)
-plot(sfs, sfbw, 'o')
-
-
-%% Summary table
-set(groot, 'DefaultFigureVisible', 'on')
-
-
-%% print SRF summary
-for isess = 1:numel(Srf)
-    sessname = strrep(sesslist{isess},'.mat', '');
-    if isempty(Srf{isess})
-        if ~isempty(Sgt{isess})
-            fprintf('%d) %s \t t(spat)=0   \t\t t(grat)=%02.2f\n', isess, sessname, Sgt{isess}.numsamples/Sgt{isess}.frate)
-        else
-            fprintf('%d) %s \t t(spat)=0   \t\t t(grat)=0\n', isess, sessname);
-        end
-    else
-        if ~isempty(Sgt{isess})
-            fprintf('%d) %s \t t(spat)=%02.2f \t\t t(grat)=%02.2f\n', isess, sessname, Srf{isess}.fine.nsamples/Srf{isess}.fine.frate, Sgt{isess}.numsamples/Sgt{isess}.frate)
-        else
-            fprintf('%d) %s \t t(spat)=%02.2f \t\t t(grat)=0\n', isess, sessname, Srf{isess}.fine.nsamples/Srf{isess}.fine.frate)
-        end
-
-    end
-
-end
-
-%%
-
-for isess = 1:numel(Srf)
-
-    sessname = strrep(sesslist{isess},'.mat', '');
-    disp(sessname)
-    
-    if isempty(Srf{isess})
-        continue
-    end
-
-    NC = numel(Srf{isess}.coarse.numspikes);
-    sx = ceil(sqrt(NC));
-    sy = round(sqrt(NC));
-
-
-    figure(1); clf
-    ax = plot.tight_subplot(sx, sy, 0, 0, 0);
-
-    for cc = 1:NC
-        set(gcf, 'currentaxes', ax(cc))
-        imagesc(Srf{isess}.coarse.xax, Srf{isess}.coarse.yax, Srf{isess}.coarse.srf(:,:,cc)); hold on
-        plot(Srf{isess}.RFs(cc).roi([1 1 3 3 1]), Srf{isess}.RFs(cc).roi([2 4 4 2 2]), 'r', 'Linewidth', 2)
-        axis off
-        plot([0 0], ylim, 'y')
-        plot(xlim, [0 0], 'y')
-    end
-
-    set(gcf, 'PaperSize', [sx*2 sy*1.5], 'PaperPosition', [0 0 sx*2 sy*1.5])
-    saveas(gcf, fullfile('figures/fig02/sesscheck', sprintf('%s_rfcoarse.pdf', sessname)))
-
-
-    figure(2); clf
-    ax = plot.tight_subplot(sx, sy, 0, 0, 0);
-
-    for cc = 1:NC
-        set(gcf, 'currentaxes', ax(cc))
-        imagesc(Srf{isess}.RFs(cc).xax, Srf{isess}.RFs(cc).yax, Srf{isess}.RFs(cc).srf);
-        hold on
-        if ~isempty(Srf{isess}.RFs(cc).mu)
-            plot.plotellipse(Srf{isess}.RFs(cc).mu, Srf{isess}.RFs(cc).C, 1, 'r');
-        end
-        axis off
-    end
-
-    set(gcf, 'PaperSize', [sx*2 sy*1.5], 'PaperPosition', [0 0 sx*2 sy*1.5])
-    saveas(gcf, fullfile('figures/fig02/sesscheck', sprintf('%s_rffine.pdf', sessname)))
-
-    figure(3); clf
-    ax = plot.tight_subplot(sx, sy, 0.01, 0.01, 0.01);
-
-    for cc = 1:NC
-        set(gcf, 'currentaxes', ax(cc))
-        plot.errorbarFill(Srf{isess}.RFs(cc).timeax, Srf{isess}.RFs(cc).temporalPref, Srf{isess}.RFs(cc).temporalPrefSd, 'b'); hold on
-        plot.errorbarFill(Srf{isess}.RFs(cc).timeax, Srf{isess}.RFs(cc).temporalNull, Srf{isess}.RFs(cc).temporalNullSd, 'r'); hold on
-        plot([0 0], ylim, 'k')
-        plot(xlim, [0 0])
-        axis off
-    end
-
-    set(gcf, 'PaperSize', [sx*2 sy*1.5], 'PaperPosition', [0 0 sx*2 sy*1.5])
-    saveas(gcf, fullfile('figures/fig02/sesscheck', sprintf('%s_rftemporal.pdf', sessname)))
-end
-
-%%
-set(groot, 'DefaultFigureVisible', 'on')
-%%
-
-if ~isempty(Sgt{isess})
-    figure(3); clf
-    ax = plot.tight_subplot(sx, sy, 0, 0, 0);
-    for cc = 1:NC
-        set(gcf, 'currentaxes', ax(cc))
-        imagesc(Sgt{isess}.rf(:,:,cc));
-        axis off
-    end
-end
-
-
-
-%%
-% cc = cc + 1;
-isess = isess + 1;
-if isess > numel(Srf)
-    isess = 1;
-end
-sessname = strrep(sesslist{isess},'.mat', '');
-disp(sessname)
-NC = numel(Srf{isess}.coarse.r2);
-% if cc > NC
-%     cc = 1;
-% end
-
-mx = zeros(NC,1);
-arat = zeros(NC,1);
-
-level = 'coarse';
-for cc = 1:NC
-thresh=.5;
-rf = Srf{isess}.(level).srf(:,:,cc);
-[xx,yy] = meshgrid(Srf{isess}.(level).xax, Srf{isess}.(level).yax);
-
-mask = (hanning(Srf{isess}.(level).dim(1))*hanning(Srf{isess}.(level).dim(2))').^.25;
-rf = rf.*mask;
-rf = (rf - min(rf(:))) / (max(rf(:)) - min(rf(:)));
-
-[con, ar, ctr, maxoutrf] = get_contour(xx,yy,rf, 'thresh', thresh);
-
-k = convhull(con(:,1), con(:,2));
-arConv = polyarea(con(k,1), con(k,2));
-
-mx(cc) = maxoutrf;
-arat(cc) = ar ./ arConv;
-
-figure(10); clf
-imagesc(xx(1,:), yy(:,1), rf); hold on
-plot(con(:,1), con(:,2), 'r')
-plot(con(k,1), con(k,2), 'y')
-drawnow
-end
-
-figure(1); clf
-NC = numel(Srf{isess}.coarse.numspikes);
-sx = ceil(sqrt(NC));
-sy = round(sqrt(NC));
-ax = plot.tight_subplot(sx, sy, 0, 0, 0);
-
-[~, ind] = sort(arat - mx);
-
-for c = 1:NC
-    set(gcf, 'currentaxes', ax(c))
-    cc = ind(c);
-    imagesc(Srf{isess}.coarse.srf(:,:,cc))
-    axis off
-end
-
-%%
-
-cc = 1;
-NC = numel(Wfs{isess});
-Wfs{isess}(cc).waveform.isiV
-figure(1); clf
-amp = arrayfun(@(x) max(x.waveform.waveform(:)) - min(x.waveform.waveform(:)), Wfs{isess});
-isiV = arrayfun(@(x) x.waveform.isiV, Wfs{isess});
-vis = arrayfun(@(x) x.BackImage.sig, Wfs{isess});
-plot(isiV, amp, '.')
-
-numspikes = Srf{isess}.coarse.numspikes;
-
-
-
-
+writetable(T, fullfile(figDir, 'summarytable.xls'))
+txt = evalc('disp(T)');
+fprintf(fid, txt);
 
 %% Example units
-exs = 3+[25, 27, 45, 45, 5]; % session #
-% ccs = [8, 9, 8, 19, 35, 14]; % unit #
 
-exs = {'ellie_20190107.mat'};
-% ccs = [18]
-% ccs = 6;
-% exs = 10*ones(1,numel(ccs));
-% ex = ex - 1;
-% cc = 0;
-% sesslist{ex}
-% %%
-% cc = cc + 1;
-% if cc > size(Srf{ex}.coarse.rf,3)
-%     cc = 1;
-% end
+exs = {'logan_20191231.mat', 'ellie_20190111.mat'};
+ccs = [19, 9];
 
-% exs = 1;
-% ccs = 1;
-ccs = ccs + 1;
 
-for ii = 1%:numel(exs)
+for ii = 1:numel(exs)
     ex = find(strcmp(sesslist, exs{ii}));
     cc = ccs(ii);
     
@@ -383,24 +151,14 @@ for ii = 1%:numel(exs)
     roi = [Srf{ex}.NEWROI([1 2]) Srf{ex}.NEWROI([3 4])-Srf{ex}.NEWROI([1 2])] + .15;
     
     rectangle('Position', roi, 'EdgeColor', 'r', 'Linewidth', 1)
-    % offset = [0 0];
-    % offset = [-5 -2];
-    % roi(1:2) = roi(1:2) + offset;
-    % rectangle('Position', roi, 'EdgeColor', 'r', 'Linewidth', 2)
+    
     I = Srf{ex}.fine.srf(:,:,cc);
     I = (I - min(I(:))) ./ (max(I(:)) - min(I(:)));
-    % I = flipud(I);
-    % imagesc(Srf{ex}.fine.xax+offset(1), fliplr(Srf{ex}.fine.yax)+offset(2), I);
-    % plot(mean(Srf{ex}.fine.xax) + offset(1)*[1 1], Srf{ex}.fine.yax([1 end])+offset(2), 'Color', 'k')
-    % plot(Srf{ex}.fine.xax([1 end])+offset(1), mean(Srf{ex}.fine.yax) + offset(2)*[1 1], 'Color', 'k')
-    % axis xy
-    
     
     pos = ax1.Position;
     pos(1:2) = pos(1:2) + [.1 0.05];
     
-    aspect = 1/2; %roi(3)./roi(4);
-%     aspect = 1;
+    aspect = 1/2;
     pos(3) = pos(3)/4;
     pos(4) = pos(3)*aspect;
     ax2 = axes('Position', pos);
@@ -410,17 +168,13 @@ for ii = 1%:numel(exs)
     plot([0 0], Srf{ex}.fine.yax([1 end]), 'Color', 'k')
     plot(Srf{ex}.fine.xax([1 end]), [0 0], 'Color', 'k')
     
-    % plot(offset(1)*[1 1], Srf{ex}.fine.yax([1 end])+offset(2), 'Color', 'k')
-    
     cmap = plot.coolwarm;
     colormap(cmap)
     
-    % if Srf{ex}.fine.sig(cc)
     if isfield(Srf{ex}.fine.rffit(cc), 'mu')
         plot.plotellipse(Srf{ex}.fine.rffit(cc).mu, Srf{ex}.fine.rffit(cc).C, 1, 'k', 'Linewidth', 1);
     end
     axis xy
-    % hold off
     
     ax2.XTickLabel = [];
     ax2.YTickLabel = [];
@@ -443,20 +197,19 @@ for ii = 1%:numel(exs)
     plot.errorbarFill(Sgt{ex}.timeax(:), Sgt{ex}.temporalPref(:,cc), Sgt{ex}.temporalPrefSd(:,cc)); %
     hold on
     plot(Sgt{ex}.timeax(:), Sgt{ex}.temporalPref(:,cc), 'k')
-    axis tight %, 'k', 'FaceColor', 'k', 'EdgeColor', 'k', 'FaceAlpha', .5); hold on
-%     plot.errorbarFill(Sgt{ex}.timeax(:), Sgt{ex}.temporalNull(:,cc), Sgt{ex}.temporalNullSd(:,cc), 'k', 'FaceColor', cmap(1,:), 'EdgeColor', cmap(1,:), 'FaceAlpha', .5); hold on
+    axis tight
+
     xlabel('Time lag (ms)')
     ylabel('Firing Rate (sp s^{-1})')
     
     plot.offsetAxes(ax)
     set(gca, 'XTick', -40:40:120)
     
-%     set(gcf, 'PaperSize', [2.5 6], 'PaperPosition', [0 0 2.5 6])
     plot.fixfigure(gcf, 8, [2.5 6], 'offsetAxes', false)
     ax2.XColor = [1 0 0];
     ax2.YColor = [1 0 0];
     ax2.Box = 'on';
-%     saveas(gcf, fullfile(figDir, sprintf('example_%s_%d.pdf', strrep(sesslist{ex}, '.mat', ''), cc)))
+    saveas(gcf, fullfile(figDir, sprintf('example_%s_%d.pdf', strrep(sesslist{ex}, '.mat', ''), cc)))
     
 end
 
@@ -482,7 +235,8 @@ mshift = [];
 sess = {};
 
 
-numspikes = [];
+numspikesS = [];
+numspikesG = [];
 
 wf = [];
 
@@ -490,7 +244,6 @@ exnum = [];
 
 zthresh = 8;
 for ex = 1:numel(Srf)
-    
     
 
     if ~isfield(Srf{ex}, 'fine') || ~isfield(Sgt{ex}, 'rffit') || (numel(Sgt{ex}.rffit) ~= numel(Srf{ex}.fine.rffit))
@@ -501,7 +254,8 @@ for ex = 1:numel(Srf)
         continue
     end
         
-    numspikes = [numspikes; Srf{ex}.coarse.numspikes(:)];
+    numspikesS = [numspikesS; Srf{ex}.coarse.numspikes(:)];
+    numspikesG = [numspikesG; Sgt{ex}.numspikes(:)];
 
     NC = numel(Srf{ex}.fine.rffit);
     for cc = 1:NC
@@ -571,38 +325,30 @@ for ex = 1:numel(Srf)
     end
 end
 
-% wrap
-% wrap orientation
+
 oriPref(oriPref < 0) = 180 + oriPref(oriPref < 0);
 oriPref(oriPref > 180) = oriPref(oriPref > 180) - 180;
 
-fprintf('%d (Spatial) and %d (Grating) of %d Units Total are significant\n', sum(sigs), sum(sigg), numel(sigs))
-
-% ecrl = arrayfun(@(x) x.ExtremityCiRatio(1), wf);
-% ecru = arrayfun(@(x) x.ExtremityCiRatio(2), wf);
 wfamp = arrayfun(@(x) x.peakval - x.troughval, wf);
 isiV = arrayfun(@(x) x.isiV, wf);
 
-%%
-six = r2 > .5;
-figure(1); clf  
-for ex = 1:17
-    sessname = strrep(sesslist{ex}, '.mat', '');
-    disp(sessname)
-    ix = six & ex==exnum;
-    plot(ecc(ix), ar(ix), 'o'); hold on
-end
+validwf = wfamp > wfampthresh;
+spikeixS = validwf & numspikesS > spike_thresh; % only include units (single and multi) with an amplitude > 40 microvolts
+spikeixG = validwf & numspikesG > spike_thresh; 
+
+fprintf(fid, '%d (Spatial) and %d (Grating) of %d recorded units (Total) had > %d spikes and waveform amplitudes > %d microvolts\n', sum(spikeixS), sum(spikeixG), numel(sigs), spike_thresh, wfampthresh);
+
+
 
 
 %% Rosa comparison Eccentricity plot
+
 % get index
-validwf = wfamp > 40 & numspikes > 100;% & ismember(exnum, [1 3:6 9 13:20 22:26]); % only include units with an amplitude > 40 microvolts
-% validwf = validwf & isiV < 1;
-six = r2 > .4 & validwf; %sigs==1 & mshift < 1.25;
-% six = six ;
-% six = six ;
-% six = six; % & validwf;
-fprintf('%d/%d units selective for space\n', sum(six), sum(validwf))
+validwf = wfamp > wfampthresh & numspikesS > spike_thresh; % only include units (single and multi) with an amplitude > 40 microvolts
+
+six = r2 > 0.5 & validwf;
+% six = sigs & validwf;
+fprintf(fid, '%d/%d (%2.2f%%) units selective for space\n', sum(six), sum(validwf), 100*sum(six)/sum(validwf));
 
 eccx = .1:.1:20; % eccentricity for plotting fits
 
@@ -628,15 +374,15 @@ options.Display ='none';
 bhatci = nlparci(bhat, resid, 'jacobian', J);
 
 
-fprintf('Rosa Fit:\n')
-fprintf('A = %02.2f\n', b0(1))
-fprintf('B = %02.2f\n', b0(2))
-fprintf('C = %02.2f\n', b0(3))
+fprintf(fid, 'Rosa Fit:\n');
+fprintf(fid, 'A = %02.2f\n', b0(1));
+fprintf(fid, 'B = %02.2f\n', b0(2));
+fprintf(fid, 'C = %02.2f\n', b0(3));
 
-fprintf('OUR Fit:\n')
-fprintf('A = %02.2f [%02.2f, %02.2f]\n', bhat(1), bhatci(1,1), bhatci(1,2))
-fprintf('B = %02.2f [%02.2f, %02.2f]\n', bhat(2), bhatci(2,1), bhatci(2,2))
-fprintf('C = %02.2f [%02.2f, %02.2f]\n', bhat(3), bhatci(3,1), bhatci(3,2))
+fprintf(fid, 'OUR Fit:\n');
+fprintf(fid, 'A = %02.2f [%02.2f, %02.2f]\n', bhat(1), bhatci(1,1), bhatci(1,2));
+fprintf(fid, 'B = %02.2f [%02.2f, %02.2f]\n', bhat(2), bhatci(2,1), bhatci(2,2));
+fprintf(fid, 'C = %02.2f [%02.2f, %02.2f]\n', bhat(3), bhatci(3,1), bhatci(3,2));
 
 hold on
 cmap = lines;
@@ -650,7 +396,7 @@ ylim([0 20])
 
 r2rosa = rsquared(y,fun(b0,x));
 r2fit = rsquared(y, fun(bhat, x));
-fprintf('r-squared for fit %02.2f and rosa %02.2f\n', r2fit, r2rosa)
+fprintf(fid, 'r-squared for fit %02.2f and rosa %02.2f\n', r2fit, r2rosa);
 
 set(gca, 'xscale', 'log', 'yscale', 'log')
 xlabel('Eccentricity (d.v.a)')
@@ -680,13 +426,13 @@ plot.formatFig(gcf, [1.75 1.5], 'nature')
 saveas(gcf, fullfile(figDir, 'fig02_ecc_vs_RFsize.pdf'))
 
 
-%% Orientation
+%% Orientation Preference
 addpath ~/Dropbox/MatlabCode/Repos/circstat-matlab/
 oriPref(angle(oriBw)~=0) = nan; % ignore untuned units
-validwf= wfamp > 40;
+validwf= wfamp > 40 & numspikesG > spike_thresh;
 gix = sigg==1 & ~isnan(oriPref) & angle(oriBw)==0 & oriBw < 90;
 gix = gix & validwf;
-fprintf('%d/%d units selective for Gratings\n', sum(gix), sum(validwf))
+fprintf(fid, '%d/%d units selective for Gratings\n', sum(gix), sum(validwf)); 
 
 
 figure(1); clf
@@ -695,9 +441,8 @@ t.TileSpacing = 'compact';
 nexttile
 
 
-h = histogram(wrapTo180(oriPref(gix)), 'binEdges', 0:10:180, 'FaceColor', .1*[1 1 1]); hold on
+h = histogram(wrapTo180(oriPref(gix)), 'binEdges', 0:20:180, 'FaceColor', .1*[1 1 1]); hold on
 text(105, .7*max(h.Values), sprintf('n=%d', sum(gix)))
-% xlabel('Orientation Preference ')
 ylabel('Count')
 set(gca,'XTick', 0:45:180, 'YTick', 0:25:50)
 plot.offsetAxes(gca, true, 0)
@@ -715,8 +460,8 @@ obws = arrayfun(@(x,y) mean(obw(op>x & op<y)), be,be2);
 obwe = arrayfun(@(x,y) std(obw(op>x & op<y))/sqrt(sum(op>x & op<y)), be,be2);
 pval = circ_otest(op/180*pi);
 
-fprintf('Orientation distribution is significantly different than uniform:\n')
-fprintf('Circ_otest pval: %d (%02.4f)\n', pval, pval)
+fprintf(fid, 'Orientation distribution is significantly different than uniform:\n');
+fprintf(fid, 'Circ_otest pval: %d (%02.4f)\n', pval, pval);
 
 cmap = [0 0 0];
 bc = (be + be2)/2;
@@ -738,7 +483,7 @@ options.Display = 'none';
     
 phat = lsqcurvefit(fun, par0, op, real(obw), [0 0 0 0], [max(obw), max(obw), 180, 2], options);
 % plot(0:180, fun(phat, 0:180), 'b')
-r2 = rsquared(obw, fun(phat, op));
+r2fit = rsquared(obw, fun(phat, op));
 
 % plot.fixfigure(gcf, 7, [2 2], 'FontName', 'Arial', ...
 %     'LineWidth',.5, 'OffsetAxes', false);
@@ -748,8 +493,7 @@ saveas(gcf, fullfile(figDir, 'fig02_Orientation.pdf'))
 
 
 %% test for difference between cardinal and oblique
-fid = 1;
-bs = 45;
+bs = 45; % window around 0, 45, 90, 135, 180
 bedges = -bs/2:bs:180+bs/2;
 [cnt, ~, id] = histcounts(op, bedges);
 obix = mod(id,2)==0;
@@ -758,11 +502,26 @@ figure(1); clf
 histogram(obw(obix), 'binEdges', 0:10:180); hold on
 histogram(obw(cardix), 'binEdges', 0:10:180); hold on
 
-fprintf(fid, 'Oblique median bandwidth: %02.3f [%02.3f, %02.3f]\n', median(obw(obix)), bootci(500, @median, obw(obix)))
-fprintf(fid, 'Cardinal median bandwidth: %02.3f [%02.3f, %02.3f]\n', median(obw(cardix)), bootci(500, @median, obw(cardix)))
+fprintf(fid, 'Oblique median bandwidth: %02.3f [%02.3f, %02.3f]\n', median(obw(obix)), bootci(nboot, @median, obw(obix)));
+fprintf(fid, 'Cardinal median bandwidth: %02.3f [%02.3f, %02.3f]\n', median(obw(cardix)), bootci(nboot, @median, obw(cardix)));
 
 [pval, ~, stats] = ranksum(obw(obix), obw(cardix));
-fprintf(fid, 'Two-sided rank sum test: p=%d (%02.10f), ranksum=%d, zval=%d\n', pval, pval, stats.ranksum, stats.zval)
+fprintf(fid, 'Two-sided rank sum test: p=%d (%02.10f), ranksum=%d, zval=%d\n', pval, pval, stats.ranksum, stats.zval);
+
+
+%% Separate by monkey
+monk = cellfun(@(x) x(1), sesslist);
+[~,monkeyId] = find(monk==unique(monk)');
+
+cmap = lines;
+six = r2 > .5;
+figure(1); clf
+for ex = 1:numel(sesslist)
+    sessname = strrep(sesslist{ex}, '.mat', '');
+    disp(sessname)
+    ix = six & ex==exnum;
+    plot(ecc(ix), ar(ix), '.', 'Color', cmap(monkeyId(ex),:)); hold on
+end
 
 %% plot spatial RF locations
 
@@ -780,6 +539,9 @@ ylim([-10 10])
 figure(10); clf
 ix = six & gix;
 plot(ecc(ix), sfPref(ix), 'o')
+xlabel('Eccentricity (d.v.a.)')
+ylabel('SF Prefrerence (cycles/deg)')
+
 
 %% plot session by session
 figure(10); clf
@@ -791,10 +553,74 @@ end
 xlim([0 10])
 ylim([0 10])
 
-%% Spatial Frequency by session
-clf
-plot(exnum(gix), sfPref(gix), '.')
-ylim([0 10])
+fclose(fid)
+
+return
 
 
-%% 
+%% plot session-by-session check
+
+for isess = 1:numel(Srf)
+
+    sessname = strrep(sesslist{isess},'.mat', '');
+    disp(sessname)
+    
+    if isempty(Srf{isess})
+        continue
+    end
+
+    NC = numel(Srf{isess}.coarse.numspikes);
+    sx = ceil(sqrt(NC));
+    sy = round(sqrt(NC));
+
+
+    figure(1); clf
+    ax = plot.tight_subplot(sx, sy, 0, 0, 0);
+
+    for cc = 1:NC
+        set(gcf, 'currentaxes', ax(cc))
+        imagesc(Srf{isess}.coarse.xax, Srf{isess}.coarse.yax, Srf{isess}.coarse.srf(:,:,cc)); hold on
+        plot(Srf{isess}.RFs(cc).roi([1 1 3 3 1]), Srf{isess}.RFs(cc).roi([2 4 4 2 2]), 'r', 'Linewidth', 2)
+        axis off
+        plot([0 0], ylim, 'y')
+        plot(xlim, [0 0], 'y')
+    end
+
+    set(gcf, 'PaperSize', [sx*2 sy*1.5], 'PaperPosition', [0 0 sx*2 sy*1.5])
+    saveas(gcf, fullfile('figures/fig02/sesscheck', sprintf('%s_rfcoarse.pdf', sessname)))
+
+
+    figure(2); clf
+    ax = plot.tight_subplot(sx, sy, 0, 0, 0);
+
+    for cc = 1:NC
+        set(gcf, 'currentaxes', ax(cc))
+        imagesc(Srf{isess}.RFs(cc).xax, Srf{isess}.RFs(cc).yax, Srf{isess}.RFs(cc).srf);
+        hold on
+        if ~isempty(Srf{isess}.RFs(cc).mu)
+            plot.plotellipse(Srf{isess}.RFs(cc).mu, Srf{isess}.RFs(cc).C, 1, 'r');
+        end
+        axis off
+    end
+
+    set(gcf, 'PaperSize', [sx*2 sy*1.5], 'PaperPosition', [0 0 sx*2 sy*1.5])
+    saveas(gcf, fullfile('figures/fig02/sesscheck', sprintf('%s_rffine.pdf', sessname)))
+
+    figure(3); clf
+    ax = plot.tight_subplot(sx, sy, 0.01, 0.01, 0.01);
+
+    for cc = 1:NC
+        set(gcf, 'currentaxes', ax(cc))
+        plot.errorbarFill(Srf{isess}.RFs(cc).timeax, Srf{isess}.RFs(cc).temporalPref, Srf{isess}.RFs(cc).temporalPrefSd, 'b'); hold on
+        plot.errorbarFill(Srf{isess}.RFs(cc).timeax, Srf{isess}.RFs(cc).temporalNull, Srf{isess}.RFs(cc).temporalNullSd, 'r'); hold on
+        plot([0 0], ylim, 'k')
+        plot(xlim, [0 0])
+        axis off
+    end
+
+    set(gcf, 'PaperSize', [sx*2 sy*1.5], 'PaperPosition', [0 0 sx*2 sy*1.5])
+    saveas(gcf, fullfile('figures/fig02/sesscheck', sprintf('%s_rftemporal.pdf', sessname)))
+end
+
+%% Summary table
+set(groot, 'DefaultFigureVisible', 'on')

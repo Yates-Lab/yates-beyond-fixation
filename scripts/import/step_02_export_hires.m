@@ -7,8 +7,8 @@ sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
 
 flist = dir(fullfile(outputdir, '*.hdf5'));
 
-% Loop over sessions and import (this will be super slow)
-for isess = 1:numel(sesslist)
+%% Loop over sessions and import (this will be super slow)
+for isess = 3
     processedFileName = sesslist{isess};
     fname = fullfile(datadir, processedFileName);
     sessname = strrep(processedFileName, '.mat', '');
@@ -18,11 +18,11 @@ for isess = 1:numel(sesslist)
 
     %     assert(sum(arrayfun(@(x) contains(x.name, sessname), flist))==0, 'export_hires: session already exists')
 
-    assert(exist(fname, 'file'), "export_hires: preprocessed file does not exist. run step 01 first")
-    if exportexists
-        disp('Export exists. skipping')
-        continue
-    end
+%     assert(exist(fname, 'file'), "export_hires: preprocessed file does not exist. run step 01 first")
+%     if exportexists
+%         disp('Export exists. skipping')
+%         continue
+%     end
     
     Exp = load(fname);
 
@@ -156,7 +156,7 @@ drawnow
 
 
 %% get STAs to check that you have the right rect
-spike_sorting = 'kilo';
+spike_sorting = 'kilowf';
 Stim = h5read(fname, ['/' stim '/' tset '/Stim']);
 % Robs = h5read(fname, ['/' stim '/' set '/Robs']);
 ftoe = h5read(fname, ['/' stim '/' tset '/frameTimesOe']);

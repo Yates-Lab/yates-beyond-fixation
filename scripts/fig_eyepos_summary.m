@@ -1,9 +1,17 @@
-figDir = 'Figures/manuscript_freeviewing';
+figDir = 'figures/supplemental';
 
 fid = 1; % print to command window
 
 clear S;
-addpath Analysis/manuscript_freeviewingmethods/
+addpath scripts/
+
+datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'preprocessed');
+sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
+folderlist = arrayfun(@(x) x.folder, dir(fullfile(datadir, '*.mat')), 'uni', 0);
+
+datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'hires');
+sesslist = [sesslist; arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0)];
+folderlist = [folderlist; arrayfun(@(x) x.folder, dir(fullfile(datadir, '*.mat')), 'uni', 0)];
 
 fprintf(fid, '******************************************************************\n');
 fprintf(fid, '******************************************************************\n');
@@ -15,11 +23,13 @@ fprintf(fid, '\t\tRUNNING EYE POSITION ANALYSIS ON All SESSIONS\n');
 fprintf(fid, '******************************************************************\n');
 fprintf(fid, '******************************************************************\n');
 clear S
-for sessId = 1:57
+
+for sessId = 1:numel(sesslist)
     fprintf(fid, '******************************************************************\n');
     fprintf(fid, 'Session %d\n', sessId)
-    Exp = io.dataFactoryGratingSubspace(sessId);
-      
+    Exp = load(fullfile(folderlist{sessId}, sesslist{sessId}));
+    Exp.FileTag = sesslist{sessId};
+
     S(sessId) = sess_eyepos_summary(Exp);
 end
 
@@ -32,12 +42,20 @@ nTrials = arrayfun(@(x) x.(stim).nTrials, S);
 switch monkey
     case {'Ellie', 'E'}
         monkIx = arrayfun(@(x) strcmp(x.exname(1), 'e'), S);
-        Exp = io.dataFactoryGratingSubspace(5);
+        Exp = load(fullfile(datadir, sesslist{find(monkeIx,1)}));
+        Exp.FileTag = sesslist{sessId};
     case {'Logan', 'L'}
         monkIx = arrayfun(@(x) strcmp(x.exname(1), 'l'), S);
-        Exp = io.dataFactoryGratingSubspace(56);
+        Exp = load(fullfile(datadir, sesslist{find(monkeIx,1)}));
+        Exp.FileTag = sesslist{sessId};
     case {'Milo', 'M'}
         monkIx = arrayfun(@(x) strcmp(x.exname(1), 'm'), S);
+        Exp = load(fullfile(datadir, sesslist{find(monkeIx,1)}));
+        Exp.FileTag = sesslist{sessId};
+    case {'Allen', 'A'}
+        monkIx = arrayfun(@(x) strcmp(x.exname(1), 'a'), S);
+        Exp = load(fullfile(datadir, sesslist{find(monkeIx,1)}));
+        Exp.FileTag = sesslist{sessId};
     case {'All'}
         monkIx = true(size(nTrials));
 end
@@ -201,9 +219,9 @@ nFixationSamples = arrayfun(@(x) x.(stim).nFixationSamples, S(good));
 
 figure(1); clf
 cmap = lines;
-monkeys = {'E', 'L', 'M'};
+monkeys = {'E', 'L', 'M', 'A'};
 rng(555)
-for m = 1:3
+for m = 1:4
     ix = arrayfun(@(x) strcmpi(x.exname(1), monkeys{m}), S(good));
     n = sum(ix);
     x = nFixationSamples(ix) ./ nTotalSamples(ix) * 60;
@@ -218,7 +236,7 @@ for m = 1:3
 end
 
 ylim([30 60])
-set(gca, 'XTick', 1:3, 'XTickLabel', monkeys, 'YTick', 30:5:60, 'TickDir', 'Out', 'Box', 'off')
+set(gca, 'XTick', 1:4, 'XTickLabel', monkeys, 'YTick', 30:5:60, 'TickDir', 'Out', 'Box', 'off')
 xlabel('Subject')
 ylabel('Time (s) per minute of recording')
 plot.fixfigure(gcf, 10, [4 4])
@@ -234,11 +252,12 @@ xlabel('Session')
 
 
 %% get cumulative fixation time
+datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'hires');
+fixsesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
 
-good = 41:57; % sessions with fixRsvp paradigm
-Sc = repmat(struct('fixtime', struct('use', false)), 57, 1);
-for ex = good(:)'
-    Exp = io.dataFactory(ex);
+Sc = repmat(struct('fixtime', struct('use', false)), numel(fixsesslist), 1);
+for ex = 1:numel(fixsesslist)
+    Exp = load(fullfile(datadir, fixsesslist{ex}));
     Sc(ex) = cumulative_fix_time(Exp);
 end
 
@@ -265,8 +284,8 @@ fixTimeFix = arrayfun(@(x) mean(x.fixtime.fixTimeFix(:) ./ x.fixtime.exTimeFix(:
 
 fixTimeFor = arrayfun(@(x) x.All.nFixationSamples/x.All.nTotalSamples, S);
 
-fprintf('Forage prep (ddpi):\n\tTime Fixating=%02.2f [%02.2f, %02.2f] (n=%d)\n', median(fixTimeFor), prctile(fixTimeFor, [2.5 97.5]), numel(fixTimeFor))
-fprintf('Fixation prep:\n\tTime Fixating=%02.2f [%02.2f,%02.2f] (n=%d)\n', median(fixTimeFix), prctile(fixTimeFix, [2.5 97.5]), numel(fixTimeFix))
+fprintf(fid, 'Forage prep (ddpi):\n\tTime Fixating=%02.2f [%02.2f, %02.2f] (n=%d)\n', median(fixTimeFor), prctile(fixTimeFor, [2.5 97.5]), numel(fixTimeFor));
+fprintf(fid, 'Fixation prep:\n\tTime Fixating=%02.2f [%02.2f,%02.2f] (n=%d)\n', median(fixTimeFix), prctile(fixTimeFix, [2.5 97.5]), numel(fixTimeFix));
 
 figure(2); clf
 
@@ -297,16 +316,16 @@ saveas(gcf, fullfile(figDir, 'fig_cumulativeFixTime.pdf'))
 %% Total experiment time
 bnds = [0 100];
 totalTime = arrayfun(@(x) x.All.totalDuration, S)/60;
-fprintf('Experiment Duration = %02.2f, range = [%02.2f, %02.2f] minutes (n=%d)\n', median(totalTime), prctile(totalTime, bnds), numel(S))
+fprintf(fid, 'Experiment Duration = %02.2f, range = [%02.2f, %02.2f] minutes (n=%d)\n', median(totalTime), prctile(totalTime, bnds), numel(S));
 
 
 hasStim = arrayfun(@(x) isfield(x.Dots, 'totalDuration'), S);
 totalTime = arrayfun(@(x) x.Dots.totalDuration, S(hasStim))/60;
-fprintf('Dot-mapping Duration = %02.2f, range [%02.2f, %02.2f] minutes (n=%d)\n', median(totalTime), prctile(totalTime, bnds), sum(hasStim))
+fprintf(fid, 'Dot-mapping Duration = %02.2f, range [%02.2f, %02.2f] minutes (n=%d)\n', median(totalTime), prctile(totalTime, bnds), sum(hasStim));
 
 hasStim = arrayfun(@(x) isfield(x.Grating, 'totalDuration'), S);
 totalTime = arrayfun(@(x) x.Grating.totalDuration, S(hasStim))/60;
-fprintf('Grating Duration = %02.2f, range = [%02.2f, %02.2f] minutes (n=%d)\n', median(totalTime), prctile(totalTime, bnds), sum(hasStim))
+fprintf(fid, 'Grating Duration = %02.2f, range = [%02.2f, %02.2f] minutes (n=%d)\n', median(totalTime), prctile(totalTime, bnds), sum(hasStim));
 
 
 figure(2); clf

@@ -1,331 +1,220 @@
-function RFs = get_spatial_rfs(Exp)
-% get_spatial_rfs
+function RFs = get_spatial_rfs(Exp, varargin)
+% get_spatial_rfs(Exp, varargin)
 % Get the spatial receptive fields for a population of units
+% 
+ip = inputParser();
+ip.addParameter('ROI', [-15, -10, 15 10])
+ip.addParameter('binSize', .5)
+ip.addParameter('Frate', 60)
+ip.addParameter('win', [-5 20])
+ip.addParameter('eyeposExclusion', 16)
+ip.addParameter('rfthresh', 0.5)
+ip.parse(varargin{:});
 
-BIGROI = [-30 -10 30 10];
-binSize = .5;
-Frate = 30;
-spike_rate_thresh = 1;
-thresh = 4; % z threshold for pixels to count as possibly in the RF
+dotTrials = io.getValidTrials(Exp, 'Dots');
+if isempty(dotTrials)
+    RFs = [];
+    return
+end
+
+BIGROI = ip.Results.ROI;
+binSize = ip.Results.binSize;
+Frate = ip.Results.Frate;
+win = ip.Results.win;
+eyeposexclusion = ip.Results.eyeposExclusion;
+rfthresh = ip.Results.rfthresh;
+
+% check whether firing rates are modulated by stimulus
+evalc("vis = io.get_visual_units(Exp, 'plotit', false, 'visStimField', 'BackImage');");
 
 eyePos = Exp.vpx.smo(:,2:3);
 
+[Xstim, RobsSpace, opts] = io.preprocess_spatialmapping_data(Exp, ...
+    'ROI', BIGROI*Exp.S.pixPerDeg, 'binSize', binSize*Exp.S.pixPerDeg, ...
+    'eyePosExclusion', eyeposexclusion * Exp.S.pixPerDeg, ...
+    'eyePos', eyePos, 'frate', Frate, ...
+    'fastBinning', true, ...
+    'smoothing', 2);
 
-dotTrials = io.getValidTrials(Exp, 'Dots');
-if ~isempty(dotTrials)
-    
-    [Xstim, RobsSpace, opts] = io.preprocess_spatialmapping_data(Exp, ...
-        'ROI', BIGROI*Exp.S.pixPerDeg, 'binSize', binSize*Exp.S.pixPerDeg, ...
-        'eyePos', eyePos, 'frate', Frate, ...
-        'spikeBinSize', 1.1/Frate, ...
-        'eyePosExclusion', 1e3, ...
-        'fastBinning', true, ...
-        'debug', false, ...
-        'validTrials', dotTrials);
-    
-end
-
-% get units to include
-spike_rate = mean(RobsSpace)*Frate;
-
-goodunits = find(spike_rate > spike_rate_thresh);
-
-fprintf('%d / %d fire enough spikes to analyze\n', numel(goodunits), size(RobsSpace,2))
-
-% calculate the spatiotemporal RF for each unit using forward correlation
-R = RobsSpace(:,goodunits) - mean(RobsSpace(:,goodunits)); % subtract mean
-win=[1 10];
-
-% get single temporal kernel for evaluating spatial RF at peak lags
-nfolds = 5;
-NT = size(R,1);
-NC = size(R,2);
-xval = regression.xvalidationIdx(NT, nfolds, true);
-
-
-%% Get single sta for average of all spikes
-% ecc = hypot(opts.eyePosAtFrame(:,1), opts.eyePosAtFrame(:,2))/Exp.S.pixPerDeg;
-% ecc = hypot(opts.eyePosAtFrame(:,1)-mean(opts.eyePosAtFrame(:,1)), opts.eyePosAtFrame(:,2)-mean(opts.eyePosAtFrame(:,2)))/Exp.S.pixPerDeg;
+% use indices only while eye position is on the screen
 scrnBnds = (Exp.S.screenRect(3:4) - Exp.S.centerPix) / Exp.S.pixPerDeg;
-scrnBnds = 1.1 * scrnBnds;
+scrnBnds = 1.5 * scrnBnds;
 eyePosAtFrame = opts.eyePosAtFrame/Exp.S.pixPerDeg;
 
-ix = (eyePosAtFrame(:,1) + BIGROI(1)) >= -scrnBnds(1) & ...
-    (eyePosAtFrame(:,1) + BIGROI(3)) <= scrnBnds(1) & ...
-    (eyePosAtFrame(:,2) + BIGROI(2)) >= -scrnBnds(2) & ...
-    (eyePosAtFrame(:,2) + BIGROI(4)) <= scrnBnds(2);
+ix = (eyePosAtFrame(:,1) + ip.Results.ROI(1)) >= -scrnBnds(1) & ...
+    (eyePosAtFrame(:,1) + ip.Results.ROI(3)) <= scrnBnds(1) & ...
+    (eyePosAtFrame(:,2) + ip.Results.ROI(2)) >= -scrnBnds(2) & ...
+    (eyePosAtFrame(:,2) + ip.Results.ROI(4)) <= scrnBnds(2);
 
 fprintf('%02.2f%% of gaze positions are safely on screen\n', 100*mean(ix))
-valid_inds = find(ix);
 
-stas = forwardCorrelation(Xstim, mean(R,2), win, valid_inds);
-stas = stas ./ sum(Xstim);
+numspikes = sum(RobsSpace(ix,:));
 
-sd = std(stas(:));
-zsta = stas / sd - mean(stas(:));
-clim = [-1 1]*max(abs(zsta(:)));
-nlags = size(stas,1);
-figure(1); clf
-for i = 1:nlags
-    subplot(2, ceil(nlags/2), i)
-    imagesc(reshape(zsta(i,:), opts.dims), clim)
-    title(sprintf('lag %d', i))
+% forward correlation
+stasFull = forwardCorrelation(full(Xstim), RobsSpace-mean(RobsSpace, 1), win, find(ix), [], true, false);
+
+% get summary statistics
+RFs = [];
+if isempty(RobsSpace)
+    return
 end
+NC = numel(vis);
+field = 'Dots';
+sig = arrayfun(@(x) x.(field).sig, vis);
+mfr = arrayfun(@(x) x.(field).stimFr, vis);
+isiV = arrayfun(@(x) x.isiRate, vis);
+% fs_stim = round(1/median(diff(opts.frameTimes)));
+% assert(abs(fs_stim - Frate) < 1, 'get_spatial_rfs: Frame rate is wrong.')
+tax = 1e3*(win(1):win(2))/Frate;
 
-thresh = min(.7*clim(2), thresh);
-Tkern = mean(zsta.*(zsta>thresh),2);
-Tkern = Tkern / max(Tkern);
-Tkern = imboxfilt(Tkern, 3);
-figure(2); clf
-plot(Tkern, '-o')
-title('Temporal Kernel')
-drawnow
+for cc = 1:NC
 
-%% check individual cells
-% % ecc = hypot(opts.eyePosAtFrame(:,1)-mean(opts.eyePosAtFrame(:,1)), opts.eyePosAtFrame(:,2)-mean(opts.eyePosAtFrame(:,2)))/Exp.S.pixPerDeg;
-% % ix = opts.eyeLabel==1 & ecc < 3.2;
-% stas = forwardCorrelation(Xstim, zscore(R), win, find(ix));
-% cc = 1;
-% %%
-% cc = cc + 1;
-% if cc > size(stas,3)
-%     cc = 1;
-% end
-% 
-% sta = stas(:,:,cc);
-% sta = sta ./ sum(Xstim);
-% 
-% 
-% sd = std(sta(:));
-% zsta = sta / sd - mean(sta(:));
-% clim = [-1 1]*max(abs(zsta(:)));
-% nlags = size(stas,1);
-% figure(1); clf
-% for i = 1:nlags
-%     subplot(2, ceil(nlags/2), i)
-%     imagesc(reshape(zsta(i,:), opts.dims), clim)
-%     title(sprintf('lag %d', i))
-% end
-% 
-% title(cc)
-% Tkern = mean(zsta.*(zsta>3.5),2);
-% Tkern = Tkern / max(Tkern);
-% figure(2); clf
-% plot(Tkern, '-o')
-% title('Temporal Kernel')
-% drawnow
+%     stas = stasFull(:,:,cc);
+    rfflat = stasFull(:,:,cc)./sum(Xstim)*Frate; % individual neuron STA
 
-
-%%
-% %% OLD NNMF WAY
-% stas = forwardCorrelation(Xstim, R, win, find(ix));
-% 
-% NC = size(R,2);
-% 
-% % Get spatial and temporal RFs
-% RFspop = zeros([opts.dims NC]);
-% nlags = size(stas,1);
-% RFtpop = zeros([nlags, NC]);
-% 
-% for cc = 1:NC
-% 
-%     I = squeeze(stas(:,:,cc));
-%     I = (I - mean(I(:)) )/ std(I(:));
-% 
-%     [bestlag,~] = find(I==max(I(:)));
-%     I = I(min(max(bestlag(1)+[-1 0 1], 1), nlags),:);
-%     I = mean(I);
-%     I = imgaussfilt(reshape(I, opts.dims), 1);
-%     RFspop(:,:,cc) = I;
-%     
-%     id = find(I(:)==max(I(:)));
-%     
-%     RFtpop(:,cc) = stas(:,id,cc); %#ok<FNDSB>
-%         
-% end
-% 
-% % Do NNMF to find ROI locations
-% I = reshape(RFspop, prod(opts.dims), NC);
-% 
-% 
-% score = zeros(4,1);
-% for nFac = 1:4
-%     rng(1234)
-%     [wnmf, hproj] = nnmf(I, nFac);
-%     rtmp_ = rsquared(I, wnmf*hproj, false);
-%     score(nFac) = mean(rtmp_);
-% end
-%     
-% figure(1); clf
-% xax = opts.xax/Exp.S.pixPerDeg;
-% yax = opts.yax/Exp.S.pixPerDeg;
-% 
-% for i = 1:nFac
-%     subplot(ceil(nFac/2), 2, i)
-%     imagesc(xax, yax, reshape(wnmf(:,i), opts.dims))
-%     title(i)
-% end
-% 
-% 
-% % user picks factors to use for 
-% factors = [1 2 3];
-% 
-% % project spatial stimuli on nnmf factors
-% Xproj = Xstim*wnmf(:,factors);
-% 
-% nfac = numel(factors);
-% 
-% % embed time 
-% Xd = makeStimRows(Xproj, nlags);
-% 
-% XX = Xd'*Xd;
-% XY = Xd'*R;
-% 
-% % linear regression
-% what = XX \ XY;
-% 
-% wts = reshape(what, [nlags, nfac, NC]);
-% 
-% score = zeros(NC, 1);
-% for cc = 1:NC
-%     score(cc) = rsquared(R(:,cc), Xd*what(:,cc));
-% end
-% 
-% iix = (score > 0.01); % find units that this representation does anything to explain firing rate
-% 
-% % average those units to get a temporal kernel for the population (this is
-% % like analyzing at the best lag, but a weighted average)
-% twts = squeeze(mean(wts,2));
-% minmax = @(x) (x - min(x)) ./ (max(x) - min(x));
-% 
-% Tpower = minmax(twts);
-% Tkern = mean(Tpower(:,iix),2);
-% Tkern = Tkern-min(Tkern);
-% plot(Tkern)
-
-%% linear regression on space only
-
-XX = Xstim'*Xstim; % sample covariance
-Rfilt = flipud(filter(Tkern, 1, flipud(R))); % spikes at best lag
-CpriorInv = qfsmooth(opts.dims(2), opts.dims(1)); % spatial smoothness penalty
-
-lambdas = [100 500 1000 5000 10000];
-nlambdas = numel(lambdas);
-
-kmap = zeros([size(Xstim,2), NC, nfolds]);
-score = zeros(nlambdas, NC, nfolds);
-tic
-s = (nfolds-1) / nfolds;
-fprintf('Running %d fold cross-validation to find spatial RF\n', nfolds)
-for ifold = 1:nfolds
-    fprintf('%d / %d folds\n', ifold, nfolds)
+    % reshape into 3D (space x space x time)
+    nlags = numel(tax);
+    rf = reshape(rfflat, [nlags, opts.dims]); % 3D spatiotemporal tensor
     
-    
-    train_inds = intersect(xval{ifold,1}, valid_inds);
-    test_inds = intersect(xval{ifold,2}, valid_inds);
-    
-    Rtrue = Rfilt(test_inds,:);
-    Rtrue = Rtrue./std(Rtrue) - mean(Rtrue); % for zscoring
-    
-    for ilam = 1:nlambdas
-        XY = Xstim(train_inds,:)'*Rfilt(train_inds,:);
-        kmap0 = (s*XX + lambdas(ilam)*CpriorInv)\XY;
+    % clip edges
+    rf([1 end],:,:) = 0;
+    rf(:,[1 end],:) = 0;
+    rf(:,:,[1 end]) = 0;
 
-        mxr2 = max(score(:,:,ifold));
+    adiff = abs(rf - median(rf(:))); % positive difference
+    mad = median(adiff(:)); % median absolute deviation
+    
+    adiff = (rf - median(rf(:))) ./ mad; % normalized (units of MAD)
+    
 
-        Rhat = Xstim(test_inds,:)*kmap0;
-        Rhat = Rhat./std(Rhat) - mean(Rhat);
-        
-        score(ilam,:,ifold) = mean(Rtrue .* Rhat); % pearson (ignores scale)
 
-        iix = score(ilam,:,ifold) > mxr2;
-        kmap(:,iix,ifold) = kmap0(:,iix);
+    % compute threshold using pre-stimulus lags
+    thresh = max(max(max(adiff(tax<=0,:))), .7*max(adiff(:)));
+    
+    % threshold and find the largest connected component
+    bw = bwlabeln(adiff > thresh);
+    s = regionprops3(bw);
+
+    if isempty(s)
+        disp('No Centroids. skipping.')
+        % no connected components found (nothing crossed threshold)
+        continue
     end
-end
 
-toc
+    % constrain when the peak lag is viable
+    peaklagst = interp1(1:nlags, tax, s.Centroid(:,2));
+    s = s(peaklagst>=0 & peaklagst <= 250,:);
 
-%%
-% what = (XX + 1000 * CpriorInv) \ XY;
-what = mean(kmap,3);
-for cc = 1:NC
-    what(:,cc) = mean(kmap(:,cc,max(squeeze(score(:,cc,:))) > 0.05),3);
-end
-% 
-% 
-% %%
-% what = kmap0;
-xax = opts.xax/Exp.S.pixPerDeg;
-yax = opts.yax/Exp.S.pixPerDeg;
-[xx,yy] = meshgrid(xax, yax);
+     if size(s,1) > 2 % no valid clusters or too many valid clusters means it's noise
+        disp('Too many centroids. skipping')
+        continue
+    end
+       
+    [maxV, bigg] = max(s.Volume);
 
-% get RFs, area, contours
-NC = size(Rfilt,2);
-ar = zeros(NC,1);
-p = zeros(NC,1);
-
-con = cell(NC,1);
-ctr = zeros(NC,2);
-for cc = 1:NC
-    z = reshape(zscore(what(:,cc)), opts.dims);
-    p(cc) = sum(z(:)>thresh);
-    [con{cc}, ar(cc), ctr(cc,:)] = get_rf_contour(xx, yy, z, 'thresh', thresh, 'plot', false);
+    ytx = s.Centroid(bigg,:); % location (in space / time)
+    peaklagt = interp1(1:nlags, tax, ytx(2)); % peak lag using centroid
     
-end
+    peaklagf = max(floor(ytx(2))-1, find(tax==0));
+    peaklagc = min(ceil(ytx(2))+1, nlags);
+    peaklag = round(ytx(2));
+    
+    rfflat = reshape(rf, nlags, []);
 
+    [~, spmx] = max(rfflat(peaklag,:));
+    [~, spmn] = min(rfflat(peaklag,:));    
 
-maxscore = max(mean(score,3));
+    % spatial RF
+    srf = squeeze(mean(rf(peaklagf:peaklagc,:,:), 1));
+    
+    dt = mode(diff(opts.frameTimes));
+    Stmp.rfflat = rfflat;
+    Stmp.skernel = srf;
+    Stmp.spower = reshape(std(rfflat), opts.dims);
+    Stmp.tpower = std(rfflat, [], 2);
+    Stmp.tkernel = rfflat(:,spmx)/dt;
+    Stmp.tkernelout = rfflat(:,spmn);
+    Stmp.xax = opts.xax/Exp.S.pixPerDeg;
+    Stmp.yax = opts.yax/Exp.S.pixPerDeg;
+    Stmp.lags = (win(1):win(2))*dt;
+    Stmp.peaklag = peaklag;
+    Stmp.peaklagt = peaklagt;
+    Stmp.sig = sig(cc);
+    Stmp.mfr = mfr(cc);
+    Stmp.isiV = isiV(cc);
+    Stmp.numspikes = numspikes(cc);
+    
+    Stmp.contour = [nan nan];
+    Stmp.contourConv = [nan nan];
+    Stmp.thresh = nan;
+    Stmp.ctr = [nan nan];
+    Stmp.area = nan;
+    Stmp.areaConvex = nan;
+    Stmp.areaRatio = nan;
+    Stmp.maxoutrf = nan;
 
-hasrf = find(maxscore > 0.05 & ar' > .6*binSize);
-% hasrf = 1:NC;
-N = numel(hasrf);
-fprintf('%d/%d units have RFs\n', N, NC)
-
-figure(1); clf
-plot(hypot(ctr(hasrf,1), ctr(hasrf,2)), sqrt(ar(hasrf)), 'ok', 'MarkerSize', 2)
-xlabel('Eccentricity')
-ylabel('sqrt(Area)')
-
-sx = round(sqrt(N));
-sy = ceil(sqrt(N));
-
-figure(3); clf
-set(gcf, 'Color', 'w')
-ax = plot.tight_subplot(sx, sy, 0.02, 0.05);
-
-for cc = 1:(sx*sy)
-    set(gcf, 'currentaxes', ax(cc))
-    if cc > N
-        axis off
+    if peaklag == 1
+        RFs = [RFs; Stmp];
         continue
     end
         
-        
-    I = reshape(zscore(what(:,hasrf(cc))), opts.dims);
+    % clip edges
+    srf = srf(2:end-1,2:end-1);
+
+    [xx,yy] = meshgrid(opts.xax(2:end-1)/Exp.S.pixPerDeg, opts.yax(2:end-1)/Exp.S.pixPerDeg);
+%     srf = (srf - min(srf(:))) / (max(srf(:)) - min(srf(:)));
+    srf = srf ./ max(srf(:));
     
-    imagesc(xax, yax, I, [-5 5]); hold on
-    plot(con{hasrf(cc)}(:,1), con{hasrf(cc)}(:,2), 'k')
+%     sc = 4;
+%     xx = imresize(xx, sc);
+%     yy = imresize(yy, sc);
+%     srf = imresize(srf, sc);
+
+    [con, ar, ctr, thresh, maxoutrf] = get_rf_contour(xx,yy,srf, 'thresh', rfthresh, 'upsample', 4);
     
-    grid on
+    figure(2); clf
+    subplot(1,2,1)
+    imagesc(xx(1,:), yy(:,1)', srf); hold on
+    plot(con(:,1), con(:,2), 'r')
+
+    subplot(1,2,2)
+    plot(tax, rfflat(:,spmx)); hold on
+    plot(tax, rfflat(:,spmn))
+   
+    drawnow
     
-    title(sprintf('%.2f', maxscore(hasrf(cc))))
-    title(sprintf('%.2f', ar(hasrf(cc))))
+
+% 
+% 
+% %     mask = (hanning(opts.dims(1))*hanning(opts.dims(2))').^.25;
+% %     rf = rf .* mask;
+% 
+%     [xx,yy] = meshgrid(opts.xax/Exp.S.pixPerDeg, opts.yax/Exp.S.pixPerDeg);
+%     
+%     rf = (rf - min(rf(:))) / (max(rf(:)) - min(rf(:)));
+%     [con, ar, ctr, maxoutrf] = get_contour(xx,yy,rf, 'thresh', thresh);
     
+    if ar == 0
+        RFs = [RFs; Stmp];
+        % no contour found
+        continue
+    end
+    
+
+    k = convhull(con(:,1), con(:,2));
+    arConv = polyarea(con(k,1), con(k,2));
+
+    
+    Stmp.contour = con;
+    Stmp.contourConv = [con(k,1), con(k,2)];
+    Stmp.thresh = thresh;
+    Stmp.ctr = ctr;
+    Stmp.area = ar;
+    Stmp.areaConvex = arConv;
+    Stmp.areaRatio = ar / arConv;
+    Stmp.maxoutrf = maxoutrf;
+
+
+    RFs = [RFs; Stmp];
+   
 end
-
-colormap(plot.coolwarm)
-
-RFs = struct();
-RFs.firing_rate_units = goodunits;
-RFs.firing_rate_thresh = spike_rate_thresh;
-RFs.xax = xax;
-RFs.yax = yax;
-RFs.lags = (1:nlags) / Frate;
-RFs.temporal_kernel = Tkern;
-RFs.spatrfs = reshape(what, [opts.dims NC]);
-RFs.sig_pixels = p';
-RFs.score = maxscore;
-RFs.contours = con;
-RFs.area = ar';
-RFs.center = ctr;
-RFs.eccentricity = hypot(ctr(:,1), ctr(:,2));

@@ -134,5 +134,5 @@ output/fig03_MT_RFs/*.pkl
 *.tfevents.*
 latest_checkpoint.txt
 model.pt
-output/fig02_spat_reg/ellie_20181206.mat
-figures/fig02/example_allen_20220601_1.pdf
+
+figures/fig02/*.xls
