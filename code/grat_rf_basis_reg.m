@@ -1,4 +1,4 @@
-function stat = grat_rf_basis(Exp, varargin)
+function stat = grat_rf_basis_reg(Exp, varargin)
 % Get Grating Receptive Field using forward correlation
 % stat = grat_rf_helper(Exp, varargin)
 % Inputs:
@@ -248,7 +248,7 @@ else
     
     stat.peaklag = zeros(NC,1);
     stat.sdbase = zeros(NC,1);
-    stat.r2 = zeros(NC,1);
+    stat.r2 = rmax; %zeros(NC,1);
     stat.r2rf = rmax;
     stat.lambdamax = lambdas(id)';
     stat.numsamples = numsamples;
@@ -364,6 +364,8 @@ for cc = 1:NC
     stat.rffit(cc).r2 = r2;
     stat.rffit(cc).srfHat = Ifit;
     stat.rffit(cc).cid = cc;
+
+    stat.r2rf(cc) = r2;
     
 end
 

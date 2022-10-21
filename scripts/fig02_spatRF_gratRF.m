@@ -9,7 +9,7 @@ datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'preprocessed')
 sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
 
 %% Loop over sesssions, get spatial receptive fields
-outdir = './output/fig02_spat_rf';
+outdir = './output/fig02_spat_reg';
  
 set(groot, 'DefaultFigureVisible', 'off')
 
@@ -27,7 +27,7 @@ for isess = 1:numel(sesslist)
     else
         Exp = load(fullfile(datadir, sessname));
 
-        RFs = get_spat_rf_coarsefine(Exp);
+        RFs = get_spat_rf_coarsefine_reg(Exp);
         
         save(fname, '-v7.3', '-struct', 'RFs');
         
@@ -42,7 +42,7 @@ set(groot, 'DefaultFigureVisible', 'on')
 %% Loop over sessions, get Grating RFs
 Sgt = cell(numel(sesslist),1);
 fittype = 'basis';
-outdir = './output/fig02_grat_rf';
+outdir = './output/fig02_grat_rf_reg';
 overwrite = false;
 for isess = 1:numel(sesslist)
     sessname = sesslist{isess};
@@ -55,7 +55,7 @@ for isess = 1:numel(sesslist)
     else
         Exp = load(fullfile(datadir, sessname));
 
-        RFs = grat_rf_basis(Exp, 'plot', false, 'debug', false);
+        RFs = grat_rf_basis_reg(Exp, 'plot', false, 'debug', false);
 
         save(fname, '-v7.3', '-struct', 'RFs');
 
@@ -104,16 +104,16 @@ wfampthresh = 40;
 info = cellfun(@(x) regexp(x, PAT, 'names'), sesslist, 'uni', 1);
 subject = arrayfun(@(x) x.subject, info, 'uni', 0);
 date = arrayfun(@(x) datestr(datenum(x.date, 'yyyymmdd'), 'mm/dd/yyyy'), info, 'uni', 0);
-NumUnitsTotal = cellfun(@(x) numel(x.fine.maxV), Srf);
+NumUnitsTotal = cellfun(@(x) numel(x.fine.r2), Srf);
 NumUnitsSpikesThresh = cellfun(@(x,y) sum(x.fine.numspikes>spike_thresh & y.numspikes > spike_thresh), Srf, Sgt);
-% NumUnitsSpikesThresh = cellfun(@(x) sum(x.fine.numspikes>spike_thresh), Srf);
+
 VisuallyDriven = cellfun(@(x) sum(arrayfun(@(y) y.BackImage.sig<.05, x)), Wfs);
-% HasRF = cellfun(@(x) sum(arrayfun(@(y) y.r2rf > .4, x.RFs)), Srf);
-% HasRF = cellfun(@(x) sum(arrayfun(@(y) y.maxV > 10, x.RFs)), Srf);
-HasRF = cellfun(@(y) sum(arrayfun(@(x) x.maxV, y.RFs)>5), Srf);
+HasRF = cellfun(@(x) sum(arrayfun(@(y) y.r2rf > .4, x.RFs)), Srf);
+HasLinRF = cellfun(@(x) sum(arrayfun(@(y) y.r2 > 0, x.RFs)), Srf);
+
 DurationGratings = cellfun(@(x) x.numsamples/x.frate, Sgt);
 DurationSpatialDots = cellfun(@(x) x.fine.nsamples/x.fine.frate, Srf);
-T = table(subject, date, NumUnitsTotal, NumUnitsSpikesThresh, VisuallyDriven, HasRF, DurationGratings, DurationSpatialDots);
+T = table(subject, date, NumUnitsTotal, NumUnitsSpikesThresh, VisuallyDriven, HasRF, HasLinRF, HasGratRF, DurationGratings, DurationSpatialDots);
 
 
 m = median(DurationGratings);
@@ -224,6 +224,7 @@ end
 
 %% Loop over SRF struct and get relevant statistics
 r2 = []; % r-squared from gaussian fit to RF
+cvr2 = []; % cross-validated r-squared for linear rf
 ar = []; % sqrt area (computed from gaussian fit)
 ecc = []; % eccentricity
 
@@ -287,6 +288,7 @@ for ex = 1:numel(Srf)
              gtr2 = [gtr2; nan];
              
              r2 = [r2; nan]; % store r-squared
+             cvr2 = [cvr2; nan];
              ar = [ar; nan];
              ecc = [ecc; nan];
              sigs = [sigs; false];
@@ -313,6 +315,7 @@ for ex = 1:numel(Srf)
          sigg = [sigg; Sgt{ex}.sig(cc)];
         
          r2 = [r2; Srf{ex}.RFs(cc).r2rf]; % store r-squared
+         cvr2 = [cvr2; Srf{ex}.RFs(cc).r2]; % store r-squared
          ar = [ar; Srf{ex}.RFs(cc).ar];
 %          ar = [ar; Srf{ex}.fine.conarea(cc)];
 %          ecc = [ecc; hypot(Srf{ex}.fine.conctr(cc,1), Srf{ex}.fine.conctr(cc,2))];
@@ -345,8 +348,7 @@ validwf = wfamp > wfampthresh;
 spikeixS = validwf & numspikesS > spike_thresh; % only include units (single and multi) with an amplitude > 40 microvolts
 spikeixG = validwf & numspikesG > spike_thresh; 
 
-fprintf(fid, '%d (Spatial) and %d (Grating) of %d recorded units (Total) had > %d spikes and waveform amplitudes > %d microvolts\n', sum(spikeixS), sum(spikeixG), numel(sigs), spike_thresh, wfampthresh);
-
+fprintf(fid, '%d (Spatial) and %d (Grating) of %d/%d recorded units (Total) had > %d spikes and waveform amplitudes > %d microvolts\n', sum(spikeixS), sum(spikeixG), sum(validwf), numel(sigs), spike_thresh, wfampthresh);
 
 
 
@@ -355,7 +357,7 @@ fprintf(fid, '%d (Spatial) and %d (Grating) of %d recorded units (Total) had > %
 % get index
 validwf = wfamp > wfampthresh & numspikesS > spike_thresh; % only include units (single and multi) with an amplitude > 40 microvolts
 
-six = r2 > 0.5 & validwf;
+six = r2 > 0.4 & validwf;
 % six = sigs & validwf;
 fprintf(fid, '%d/%d (%2.2f%%) units selective for space\n', sum(six), sum(validwf), 100*sum(six)/sum(validwf));
 
@@ -438,6 +440,7 @@ saveas(gcf, fullfile(figDir, 'fig02_ecc_vs_RFsize.pdf'))
 %% Orientation Preference
 addpath ~/Dropbox/MatlabCode/Repos/circstat-matlab/
 oriPref(angle(oriBw)~=0) = nan; % ignore untuned units
+
 validwf= wfamp > 40 & numspikesG > spike_thresh;
 gix = sigg==1 & ~isnan(oriPref) & angle(oriBw)==0 & oriBw < 90;
 gix = gix & validwf;
