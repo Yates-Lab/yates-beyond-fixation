@@ -2,7 +2,7 @@
 import sys, os
 
 sys.path.insert(0, '/home/jake/Data/Repos/')
-sys.path.insert(0, '/home/jake/Data/Repos/yates-beyond-fixation')
+sys.path.insert(0, '/home/jake/Data/Repos/yates-beyond-fixation/scripts/')
 
 datadir = '/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'
 dirname = os.path.join('.', 'checkpoints')
@@ -232,6 +232,8 @@ def fit_session(sessname, dirpath, overwrite=False):
         'glm': glm0,
         'llval': llval,
         'cids': clist,
+        'numspikes': mt.robs.sum(dim=0),
+        'duration': NT/int(1/np.median(np.diff(mt.frameTime))),
         'tcs': tcs,
         'rfs': rfs}
 
@@ -245,13 +247,29 @@ def fit_session(sessname, dirpath, overwrite=False):
 r2s = []
 dpref = []
 bw = []
+num_spikes = []
+num_spikes_sess = []
+num_samples = []
+frates = []
+weights = np.empty([2,15,15,18,0])
 
 for i in range(len(sess_list)):
     sessname = sess_list[i]
     sessfit = fit_session(sessname, dirpath=dirpath)
+    mt = MTDotsDataset(sessname, dirpath)
+    NT = len(mt)
+    frate = int(1/np.median(np.diff(mt.frameTime)))
+    num_samples.append(NT)
+    frates.append(frate)
+    num_spikes + list(mt.robs.sum(dim=0).numpy().astype(int))
+    num_spikes_sess.append(mt.robs.sum(dim=0).numpy().astype(int))
+
+
     print("Done")
     plt.close("all")
     
+    weights = np.append(weights, sessfit['glm'].core.lin0.get_weights(), axis=4)
+
     r = [sessfit['tcs'][cc]['r2'][0] for cc in range(len(sessfit['tcs']))]
     r2s = r2s + r
     d = [sessfit['tcs'][cc]['popt'][0] for cc in range(len(sessfit['tcs']))]
@@ -260,6 +278,17 @@ for i in range(len(sess_list)):
     b = [sessfit['tcs'][cc]['popt'][1] for cc in range(len(sessfit['tcs']))]
     bw = bw + b
 
+#%% Some summary
+frate = 100
+
+for i in range(len(sess_list)):
+    sessname = sess_list[i]
+    sessfit = fit_session(sessname, dirpath=dirpath)
+    
+    ngood = np.sum(sessfit['llval']>0)
+    NC = len(sessfit['llval'])
+    duration = num_samples[i]/frate
+    print("%s %02.2f s %d/%d (%2.2f), ll=%2.3f" %(sessname, duration, ngood, NC, ngood/NC, np.mean(sessfit['llval'][sessfit['llval']>0])))
 
 # %%
 
@@ -272,6 +301,13 @@ print("mean r2 = %02.3f +- %02.3f (n=%d)" % (mu, se, len(r2)))
 dpref = np.asarray(dpref)
 bw = np.asarray(bw)
 
+print("mean duration = %2.2f s" %np.mean(np.asarray(num_samples)/frate))
+print("min duration = %2.2f s" %np.min(np.asarray(num_samples)/frate))
+print("max duration = %2.2f s" %np.max(np.asarray(num_samples)/frate))
+
+plt.plot(dpref, bw, '.')
+plt.ylim([0,20])
+
 #%%
 def wrapto360(x):
     return x%360
@@ -279,19 +315,13 @@ def wrapto360(x):
 def rad2deg(x):
     return x/np.pi*180
 
-plt.hist(wrapto360(rad2deg(dpref[ix])), bins=50)
-
-
-
-#%%
-x = np.linspace(-720, 720, 500)
-plt.plot(x, x%360)
-
-# %%
-# thetaPref, Bandwidth, base, amplitude
-# sessfit['tcs'][0]['popt'][0]
+plt.figure()
+plt.hist(wrapto360(rad2deg(dpref[ix])), bins=np.arange(0,350,15))
+plt.show()
 
 
 # %%
 sessfit['tcs'][0]['pcov'][0]
+# %%
+
 # %%
