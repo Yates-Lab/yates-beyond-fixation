@@ -1,4 +1,4 @@
-function [XY,NX,XX] = simpleForcorrValid(X,Y,nt,valid,offset)
+function [XY,NX,XX] = simpleForcorrValid(X,Y,nt,valid,offset, normalize)
 % [XY,XX] = simpleRevcorrValid(X,Y,nkt,valid)
 %
 % Computes reverse correlation of Y with X, for a number of lags nkt.
@@ -27,8 +27,9 @@ if nargin < 5
 end
 
 % Compute reverse correlation of X against Y
-bad = (valid-nt-offset) < 1;
-bad = bad | (valid + nt) > size(X,1);
+NT = size(X,1);
+bad = (valid-offset) < 1 | (valid-offset) > NT;
+bad = bad | (valid + nt) > NT;
 valid(bad) = [];
 XY = zeros(nt,swid,NC,class(X)); % allocate space
 NX = sum(X(valid-offset,:));
@@ -37,6 +38,11 @@ for j = 1:nt
     XY(j,:,:) = (Y(j+valid,:)'*X(valid-offset,:))';
 end
 
+if normalize
+    for i = 1:size(XY,3)
+        XY(:,:,i) = XY(:,:,i) ./ NX;
+    end
+end
 
 % Compute stimulus autocovariance, if desired
 if nargout > 2

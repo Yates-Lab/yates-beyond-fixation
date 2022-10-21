@@ -39,6 +39,7 @@ C = [phat(3) phat(4); phat(4) phat(3)]'*[phat(3) phat(4); phat(4) phat(3)];
         
 stat = struct();
 stat.gfun = gfun;
+stat.phat = phat;
 
 % get r2
 Ihat = gfun(phat, X);

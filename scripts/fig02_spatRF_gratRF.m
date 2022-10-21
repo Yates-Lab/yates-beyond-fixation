@@ -9,12 +9,13 @@ datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'preprocessed')
 sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
 
 %% Loop over sesssions, get spatial receptive fields
-outdir = './output/fig02_spat_reg';
+outdir = './output/fig02_spat_rf';
  
 set(groot, 'DefaultFigureVisible', 'off')
 
 Srf = cell(numel(sesslist), 1);
 overwrite = false;
+
 for isess = 1:numel(sesslist)
     sessname = sesslist{isess};
 
@@ -103,11 +104,13 @@ wfampthresh = 40;
 info = cellfun(@(x) regexp(x, PAT, 'names'), sesslist, 'uni', 1);
 subject = arrayfun(@(x) x.subject, info, 'uni', 0);
 date = arrayfun(@(x) datestr(datenum(x.date, 'yyyymmdd'), 'mm/dd/yyyy'), info, 'uni', 0);
-NumUnitsTotal = cellfun(@(x) numel(x.fine.r2), Srf);
+NumUnitsTotal = cellfun(@(x) numel(x.fine.maxV), Srf);
 NumUnitsSpikesThresh = cellfun(@(x,y) sum(x.fine.numspikes>spike_thresh & y.numspikes > spike_thresh), Srf, Sgt);
+% NumUnitsSpikesThresh = cellfun(@(x) sum(x.fine.numspikes>spike_thresh), Srf);
 VisuallyDriven = cellfun(@(x) sum(arrayfun(@(y) y.BackImage.sig<.05, x)), Wfs);
-HasRF = cellfun(@(x) sum(arrayfun(@(y) y.r2rf > .4, x.RFs)), Srf);
-
+% HasRF = cellfun(@(x) sum(arrayfun(@(y) y.r2rf > .4, x.RFs)), Srf);
+% HasRF = cellfun(@(x) sum(arrayfun(@(y) y.maxV > 10, x.RFs)), Srf);
+HasRF = cellfun(@(y) sum(arrayfun(@(x) x.maxV, y.RFs)>5), Srf);
 DurationGratings = cellfun(@(x) x.numsamples/x.frate, Sgt);
 DurationSpatialDots = cellfun(@(x) x.fine.nsamples/x.fine.frate, Srf);
 T = table(subject, date, NumUnitsTotal, NumUnitsSpikesThresh, VisuallyDriven, HasRF, DurationGratings, DurationSpatialDots);
@@ -148,7 +151,9 @@ for ii = 1:numel(exs)
     imagesc(Srf{ex}.coarse.xax, Srf{ex}.coarse.yax, I); hold on
     axis xy
     
-    roi = [Srf{ex}.NEWROI([1 2]) Srf{ex}.NEWROI([3 4])-Srf{ex}.NEWROI([1 2])] + .15;
+    NEWROI = Srf{ex}.RFs(cc).roi;
+    plot(NEWROI([1 1 3 3 1]), NEWROI([2 4 4 2 2]))
+    roi = [NEWROI([1 2]) NEWROI([3 4])-NEWROI([1 2])] + .15;
     
     rectangle('Position', roi, 'EdgeColor', 'r', 'Linewidth', 1)
     
@@ -171,7 +176,11 @@ for ii = 1:numel(exs)
     cmap = plot.coolwarm;
     colormap(cmap)
     
-    if isfield(Srf{ex}.fine.rffit(cc), 'mu')
+    if isfield(Srf{ex}.fine, 'contours')
+        plot(Srf{ex}.fine.contours{cc}(:,1), Srf{ex}.fine.contours{cc}(:,2), 'r')
+    end
+
+    if isfield(Srf{ex}.fine.rffit(cc), 'C')
         plot.plotellipse(Srf{ex}.fine.rffit(cc).mu, Srf{ex}.fine.rffit(cc).C, 1, 'k', 'Linewidth', 1);
     end
     axis xy
@@ -560,7 +569,7 @@ return
 
 %% plot session-by-session check
 
-for isess = 1:numel(Srf)
+for isess = 1
 
     sessname = strrep(sesslist{isess},'.mat', '');
     disp(sessname)
@@ -597,9 +606,12 @@ for isess = 1:numel(Srf)
         set(gcf, 'currentaxes', ax(cc))
         imagesc(Srf{isess}.RFs(cc).xax, Srf{isess}.RFs(cc).yax, Srf{isess}.RFs(cc).srf);
         hold on
-        if ~isempty(Srf{isess}.RFs(cc).mu)
-            plot.plotellipse(Srf{isess}.RFs(cc).mu, Srf{isess}.RFs(cc).C, 1, 'r');
+        if ~isempty(Srf{isess}.RFs(cc).contour)
+            plot(Srf{isess}.RFs(cc).contour(:,1), Srf{isess}.RFs(cc).contour(:,2), 'r')
         end
+%         if ~isempty(Srf{isess}.RFs(cc).mu)
+%             plot.plotellipse(Srf{isess}.RFs(cc).mu, Srf{isess}.RFs(cc).C, 1, 'r');
+%         end
         axis off
     end
 

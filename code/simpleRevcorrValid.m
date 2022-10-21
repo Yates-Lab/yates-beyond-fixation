@@ -27,9 +27,11 @@ if nargin < 5
 end
 
 % Compute reverse correlation of X against Y
-bad = (valid-nt-offset) < 1;
-bad = bad | (valid + nt) > size(X,1);
+NT = size(X,1);
+bad = (valid-offset) < 1 | (valid-offset) > NT;
+bad = bad | (valid + nt) > NT;
 valid(bad) = [];
+
 XY = zeros(nt,swid,NC,class(X)); % allocate space
 
 for j = 1:nt

@@ -106,71 +106,46 @@ else
     valid = find(valid);
     
     NC = size(Robs,2);
-
-    %%
-    numsamples = size(Stim,1);
-    numspikes = sum(Robs,1);
-    numvalid = numel(valid);
-    numlags = win(2);
-    dims = [numBasisSf, ip.Results.numBasisOri];
-    Rdelta = Robs-mean(Robs,1);
-    sigrf = get_rf_sig(Stim, Rdelta, numlags, valid, dims, 'smoothing', 1, 'plot', true);
-
-    %%
-    ss = squeeze(std(sigrf.stasNorm, [], 1));
-
     
-    sx = ceil(sqrt(NC));
-    sy = round(sqrt(NC));
-    figure(1); clf
-    for cc = 1:NC
-        subplot(sx, sy, cc)
-        imagesc(reshape(ss(:,cc), dims));
+    % time-embedded stimulus
+    Xstim = makeStimRows(Stim, nlags);
+    numsamples = size(Xstim,1);
+    
+    % --- Ridge regression to find RF
+    lambdas = [.1 1 10 100 1000 10000 100000]; % ridge parameter
+    
+    nValid = numel(valid);
+    test = randsample(valid, floor(nValid/5));
+    train = setdiff(valid, test);
+    
+    % use delta spike rate
+    numspikes = sum(Robs);
+    Rdelta = Robs - mean(Robs);
+    
+    rtest = Rdelta(test,:);
+    r0 = mean(rtest);
+    XX = (Xstim(train,:)'*Xstim(train,:)); % covariance
+    XY = (Xstim(train,:)'*Rdelta(train,:));
+    I = eye(size(XX,2));
+    
+    nlam = numel(lambdas);
+    r2 = zeros(NC, nlam);
+    ws = zeros(size(XX,1), NC, nlam);
+    for ilam = 1:nlam
+        w = (XX + I*lambdas(ilam)) \ XY;
+        ws(:,:,ilam) = w;
+        rhat = Xstim(test,:)*w;
+        r2(:,ilam) = 1 - sum((rtest - rhat).^2) ./ sum((rtest-r0).^2);
     end
-
+    
+    
+    
+    % figure(1); clf
+    % imagesc(r2); hold on
+    % plot(id, 1:NC, 'ko')
     %%
-
-    %%
-%     
-%     % time-embedded stimulus
-%     Xstim = makeStimRows(Stim, nlags);
-%     numsamples = size(Xstim,1);
-%     
-%     % --- Ridge regression to find RF
-%     lambdas = [.1 1 10 100 1000 10000 100000]; % ridge parameter
-%     
-%     nValid = numel(valid);
-%     test = randsample(valid, floor(nValid/5));
-%     train = setdiff(valid, test);
-%     
-%     % use delta spike rate
-%     numspikes = sum(Robs);
-%     Rdelta = Robs - mean(Robs);
-%     
-%     rtest = Rdelta(test,:);
-%     r0 = mean(rtest);
-%     XX = (Xstim(train,:)'*Xstim(train,:)); % covariance
-%     XY = (Xstim(train,:)'*Rdelta(train,:));
-%     I = eye(size(XX,2));
-%     
-%     nlam = numel(lambdas);
-%     r2 = zeros(NC, nlam);
-%     ws = zeros(size(XX,1), NC, nlam);
-%     for ilam = 1:nlam
-%         w = (XX + I*lambdas(ilam)) \ XY;
-%         ws(:,:,ilam) = w;
-%         rhat = Xstim(test,:)*w;
-%         r2(:,ilam) = 1 - sum((rtest - rhat).^2) ./ sum((rtest-r0).^2);
-%     end
-%     
-%     
-%     
-%     % figure(1); clf
-%     % imagesc(r2); hold on
-%     % plot(id, 1:NC, 'ko')
-%     %%
-%     % get best regularization
-%     [rmax, id] = max(r2,[],2);
+    % get best regularization
+    [rmax, id] = max(r2,[],2);
     
     if ip.Results.plot
         figure(1); clf
@@ -184,7 +159,7 @@ else
     dims = size(xx);
     
     nbasis = ip.Results.numBasisOri * numBasisSf;
-    mrf = zeros(numlags, nbasis, NC);
+    mrf = zeros(nlags, nbasis, NC);
     temporalPref = zeros(diff(win)+1, NC);
     temporalPrefSd = zeros(diff(win)+1, NC);
     temporalNull = zeros(diff(win)+1, NC);
@@ -192,7 +167,7 @@ else
     peaklag = zeros(NC,1);
     srf = zeros([dims, NC]);
     for cc = 1:NC
-        mrf(:,:,cc) = reshape(sigrf.stasRaw(:,:,cc), [numlags nbasis]);
+        mrf(:,:,cc) = reshape(ws(:,cc,id(cc)), [nlags nbasis]);
         
         % get peak lag
         w = mrf(:,:,cc);
@@ -274,14 +249,11 @@ else
     stat.peaklag = zeros(NC,1);
     stat.sdbase = zeros(NC,1);
     stat.r2 = zeros(NC,1);
-    stat.r2rf = zeros(NC,1);
-%     stat.lambdamax = lambdas(id)';
+    stat.r2rf = rmax;
+    stat.lambdamax = lambdas(id)';
     stat.numsamples = numsamples;
-    stat.numvalid = numvalid;
     stat.frate = fs_stim;
     stat.numspikes = numspikes;
-    stat.sigrf = sigrf.sigrf;
-    stat.maxV = sigrf.volume;
     
     
     
