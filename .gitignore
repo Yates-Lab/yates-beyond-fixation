@@ -136,3 +136,5 @@ latest_checkpoint.txt
 model.pt
 
 figures/fig02/*.xls
+scripts/*.png
+scripts/*.pt

@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_stas(stas, show_zero=True):
+def plot_stas(stas, show_zero=True, plot=True, thresh=None):
     
     NC = stas.shape[-1]
     num_lags= stas.shape[0]
@@ -15,7 +15,9 @@ def plot_stas(stas, show_zero=True):
     amp = np.zeros(NC)
     blag = np.zeros(NC)
 
-    plt.figure(figsize=(sx*3,sy*2))
+    if plot:
+        plt.figure(figsize=(sx*3,sy*2))
+
     for cc in range(NC):
         w = stas[:,:,:,cc]
 
@@ -34,24 +36,34 @@ def plot_stas(stas, show_zero=True):
 
         bestlag = np.argmax(np.std(w.reshape( (num_lags, -1)), axis=1))
         blag[cc] = bestlag
-        plt.subplot(sx,sy, cc*2 + 1)
+        
         v = np.max(np.abs(w))
-        plt.imshow(w[bestlag,:,:], aspect='auto', interpolation=None, vmin=-v, vmax=v, cmap="coolwarm_r", extent=(-1,1,-1,1))
         amp[cc] = np.std(w[bestlag,:,:].flatten())
-        plt.title(cc)
+
+        if plot:
+            plt.subplot(sx,sy, cc*2 + 1)
+            plt.imshow(w[bestlag,:,:], aspect='auto', interpolation=None, vmin=-v, vmax=v, cmap="coolwarm_r", extent=(-1,1,-1,1))
+            plt.title(cc)
+        
         try:
-            plt.subplot(sx,sy, cc*2 + 2)
+            if plot:
+                plt.subplot(sx,sy, cc*2 + 2)
             i,j=np.where(w[bestlag,:,:]==np.max(w[bestlag,:,:]))
             t1 = stas[:,i[0],j[0],cc]
             # t1 = w[:,i[0], j[0]]
-            plt.plot(t1, '-ob')
+            if plot:
+                plt.plot(t1, '-ob')
             i,j=np.where(w[bestlag,:,:]==np.min(w[bestlag,:,:]))
             # t2 = w[:,i[0], j[0]]
             t2 = stas[:,i[0],j[0],cc]
-            plt.plot(t2, '-or')
-            if show_zero:
-                plt.axhline(0, color='k')
+            if plot:
+                plt.plot(t2, '-or')
+                if show_zero:
+                    plt.axhline(0, color='k')
+                    if thresh is not None:
+                        plt.axhline(thresh[cc],color='k', ls='--')
+                
         except:
             pass
     
-    return mu, blag
+    return mu, blag.astype(int)
