@@ -92,10 +92,18 @@ frameTimes = cellfun(@(x) x.PR.NoiseHistory(:,1), Exp.D(validTrials(:)), 'uni', 
 xpos = cellfun(@(x) x.PR.NoiseHistory(:,1+(1:x.PR.noiseNum)), Exp.D(validTrials(:)), 'uni', 0);
 ypos = cellfun(@(x) x.PR.NoiseHistory(:,x.PR.noiseNum+1+(1:x.PR.noiseNum)), Exp.D(validTrials(:)), 'uni', 0);
 
+probex = cellfun(@(x) x.PR.ProbeHistory(:,1), Exp.D(validTrials(:)), 'uni', 0);
+probey = cellfun(@(x) x.PR.ProbeHistory(:,2), Exp.D(validTrials(:)), 'uni', 0);
+probeid = cellfun(@(x) x.PR.ProbeHistory(:,3), Exp.D(validTrials(:)), 'uni', 0);
+
 % check if two conditions were run a
 nd = cellfun(@(x) size(x,2), xpos);
 xpos = cell2mat(xpos(nd == max(nd)));
 ypos = cell2mat(ypos(nd == max(nd)));
+probex = cell2mat(probex(nd == max(nd)));
+probey = cell2mat(probey(nd == max(nd)));
+probeid = cell2mat(probeid(nd == max(nd)));
+
 frameTimes = Exp.ptb2Ephys(cell2mat(frameTimes(nd==max(nd))));
 frameTimes = frameTimes + ip.Results.latency;
 
@@ -260,7 +268,7 @@ if verbose
     fprintf('Done [%02.2f]\n', toc)
 end
 
-
+stimX = full(stimX);
 
 % %
 % figure(2); clf, 
@@ -283,6 +291,9 @@ if t_downsample > 1
     frameTimes = downsample_time(frameTimes(valid), t_downsample) / t_downsample;
     xpos =  downsample_time(xpos(valid,:), t_downsample) / t_downsample;
     ypos =  downsample_time(ypos(valid,:), t_downsample) / t_downsample;
+    probex =  downsample_time(probex(valid,:), t_downsample) / t_downsample;
+    probey =  downsample_time(probey(valid,:), t_downsample) / t_downsample;
+    probeid =  downsample_time(probeid(valid,:), t_downsample) / t_downsample;
     eyeAtFrame = downsample_time(eyeAtFrame(valid,:), t_downsample) / t_downsample;
     eyeLabels = downsample_time(eyeLabels(valid), t_downsample) / t_downsample;
     eyeSpeed = downsample_time(eyeSpeed(valid), t_downsample) / t_downsample;
@@ -291,6 +302,9 @@ else % apply valid
     frameTimes = frameTimes(valid);
     xpos =  xpos(valid,:);
     ypos =  ypos(valid,:);
+    probex =  probex(valid,:);
+    probey =  probey(valid,:);
+    probeid =  probeid(valid,:);
     eyeAtFrame = eyeAtFrame(valid,:);
     eyeLabels = eyeLabels(valid);
     eyeSpeed = eyeSpeed(valid);
@@ -304,6 +318,9 @@ opts.yax = yax;
 opts.dims = dims;
 opts.xPosition = xpos;
 opts.yPosition = -ypos;
+opts.probex = probex;
+opts.probey = probey;
+opts.probeid = probeid;
 opts.eyePosAtFrame = eyeAtFrame.*[1 -1]; % flip Y ahead of time
 opts.eyeSpeed = eyeSpeed;
 opts.validFrames = valid;

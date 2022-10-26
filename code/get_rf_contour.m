@@ -1,7 +1,9 @@
 function [con, ar, ctr, thresh, maxoutrf] = get_rf_contour(xi,yi,rf,varargin)
 % get_rf_contour(xi,yi,rf,varargin)
 % [con, ar, ctr, thresh, maxoutrf] = get_rf_contour(xi,yi,rf,varargin)
-
+% thresh 
+% upsample
+% plot
 ip = inputParser();
 ip.addParameter('thresh', .5)
 ip.addParameter('upsample', 1)
