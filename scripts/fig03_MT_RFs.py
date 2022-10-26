@@ -279,16 +279,34 @@ for i in range(len(sess_list)):
     bw = bw + b
 
 #%% Some summary
+def rad2deg(rad):
+    return rad/np.pi*180
+
+def k2hw(k):
+    # convert k to half-width (deg.)
+    return rad2deg(np.arccos(np.log(0.5)/k + 1))
+    
+plt.figure()
+plt.hist(k2hw(bw[bw<10]))
+
+#%%
 frate = 100
+
+ngoodtot = 0
+ntot = 0
 
 for i in range(len(sess_list)):
     sessname = sess_list[i]
     sessfit = fit_session(sessname, dirpath=dirpath)
     
-    ngood = np.sum(sessfit['llval']>0)
+    ngood = len(sessfit['tcs'])
+    ngoodtot += ngood
     NC = len(sessfit['llval'])
+    ntot += NC
     duration = num_samples[i]/frate
     print("%s %02.2f s %d/%d (%2.2f), ll=%2.3f" %(sessname, duration, ngood, NC, ngood/NC, np.mean(sessfit['llval'][sessfit['llval']>0])))
+
+print("total: %d/%d (%2.2f%%)" %(ngoodtot, ntot, 100*ngoodtot/ntot))
 
 # %%
 
