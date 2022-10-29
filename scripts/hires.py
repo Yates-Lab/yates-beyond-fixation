@@ -791,8 +791,12 @@ def get_mask_from_contour(Im, contour):
     import scipy.ndimage as ndimage    
     # Create an empty image to store the masked array
     r_mask = np.zeros_like(Im, dtype='bool')
+    ci = np.round(contour[:, 0]).astype('int')
+    cj = np.round(contour[:, 1]).astype('int')
+    ci = np.minimum(ci, Im.shape[0]-1)
+    cj = np.minimum(cj, Im.shape[1]-1)
     # Create a contour image by using the contour coordinates rounded to their nearest integer value
-    r_mask[np.round(contour[:, 0]).astype('int'), np.round(contour[:, 1]).astype('int')] = 1
+    r_mask[ci, cj] = 1
     # Fill in the hole created by the contour boundary
     r_mask = ndimage.binary_fill_holes(r_mask)
     return r_mask
@@ -818,8 +822,11 @@ def get_contour(Im, thresh):
     return contour, area, center
 
 
-def get_rf_contour(rf, thresh = .5):
+def get_rf_contour(rf, thresh = .5, pad=1):
     
+    if pad > 0:
+        rf = np.pad(rf, pad, 'constant')
+
     thresh_ = .9
 
     assert thresh < 1, 'get_rf_contour: threshold must be 0 < thresh < 1. use get_contour for unnormalized values'
@@ -840,6 +847,9 @@ def get_rf_contour(rf, thresh = .5):
 
     con, ar, ctr = get_contour(rf, thresh=thresh_)
     
+    # ctr = ctr - pad
+    # con = con - pad
+
     return con, ar, ctr, thresh_
 
 # smooth
@@ -1026,8 +1036,40 @@ def get_stas_sig_square(data, thresh=0.001):
 
     return {'stas': s, 'sig': sig, 'thresh': thresh, 'nspikes': ny, 'bestlag':bestlag}
 
+def shift_stim(im, shift):
+    """
+    apply shifter to translate stimulus as a function of the eye position
+    """
+    import torch.nn.functional as F
+    import torch
+    affine_trans = torch.tensor([[[1., 0., 0.], [0., 1., 0.]]])
+    sz = im.shape # [N x C x W x H x T]
+
+    im = im.permute(0,1,4,2,3).reshape(sz[0], sz[1]*sz[4], sz[2], sz[3])
+
+    sz2 = im.shape
+    print(sz2)
+
+    aff = torch.tensor([[1,0,0],[0,1,0]])
+
+    affine_trans = shift[:,:,None]+aff[None,:,:]
+    affine_trans[:,0,0] = 1
+    affine_trans[:,0,1] = 0
+    affine_trans[:,1,0] = 0
+    affine_trans[:,1,1] = 1
+
+    n = sz2[0]
+    c = sz2[1]
+
+    grid = F.affine_grid(affine_trans, torch.Size((n, c, sz2[-2], sz2[-1])), align_corners=False)
+
+    im2 = F.grid_sample(im, grid, align_corners=False)
+    im2 = im2.reshape(sz[0], sz[1], sz[4], sz[2], sz[3]).permute(0, 1, 3, 4, 2)
+
+    return im2
+    
 def fig04_rf_analysis(sessname = '20220610',
-    datadir='/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'):
+    datadir='/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/', overwrite=False):
     
     import pickle
     from NDNT.utils import ensure_dir
@@ -1040,7 +1082,7 @@ def fig04_rf_analysis(sessname = '20220610',
     
     fname = 'hires_' + sessname + '.pkl'
     fnamefull = os.path.join(outdir, fname)
-    if fname in flist:
+    if fname in flist and not overwrite:
         
         if os.path.exists(fnamefull):
             print("Loading %s" %sessname)
@@ -1121,8 +1163,8 @@ def fig04_rf_analysis(sessname = '20220610',
     ctr_inds = np.where(np.hypot(ds.covariates['eyepos'][ds.valid_idx,0].cpu().numpy() - rgx0, ds.covariates['eyepos'][ds.valid_idx,1].cpu().numpy() - rgy0) < rad)[0].tolist()
     print("computing STAs with %d indices" %len(ctr_inds))
 
-
     data = ds[ctr_inds]
+
     rf = get_stas_sig(data)
     rf2  = get_stas_sig_square(data)
 
@@ -1135,10 +1177,32 @@ def fig04_rf_analysis(sessname = '20220610',
     rect = ds.stim_indices[ds.sess_list[0]]['Gabor']['rect']
     ppd = ds.stim_indices[ds.sess_list[0]]['Gabor']['ppd']
     extent = [rect[0]/ppd, rect[2]/ppd, rect[3]/ppd, rect[1]/ppd]
+    
+    shifter = ds.get_shifters()
 
+    del data
+    del ds
+    ds = Pixel(datadir,
+            sess_list=[sessname],
+            requested_stims=['Dots', 'Gabor'],
+            num_lags=12,
+            downsample_t=2,
+            download=True,
+            valid_eye_rad=valid_eye_rad,
+            ctr=np.array([0,0]),
+            fixations_only=True,
+            load_shifters=False,
+            spike_sorting=spike_sorting,
+            )
+    ds.shift = None
+    # rfnoshift = get_stas_sig(data)
+    rfnoshift = ds.get_stas(inds=ctr_inds)
+    
     rfsum = {'sessname': sessname,
         'rflin': rf,
         'rfsquare': rf2,
+        'rflinns': rfnoshift,
+        'shifter': shifter[sessname],
         'NC': NCtot,
         'num_samples': num_samples,
         'frate': frate,

@@ -161,12 +161,21 @@ dsfix.crop_idx = [y0,y1,x0,x1]
 
 #%% get units with significant STAs
 
+from hires import get_stas_sig
+
+datafix = dsfixc[:]
+rffix = get_stas_sig(datafix)
+del datafix
 
 data = ds[gab_inds]
-mu = data['stim'].mean(dim=(0,1))
-sd = data['stim'].std(dim=(0,1))
+rf = get_stas_sig(data)
 
-thresh = 0.001 # significance at the p < thresh level
+#%%
+thresh = 0.005
+cids = np.where(np.logical_and(rffix['sig'] > thresh, rf['sig'] > thresh))[0]
+
+#%%
+
 robs = data['robs']*data['dfs']
 ny = robs.sum(dim=0)
 stas_ = torch.einsum('ncxyt,nm->xytm', data['stim'], data['robs'])
@@ -177,19 +186,7 @@ stas_2 = torch.einsum('ncxyt,nm->xytm', data['stim']**2, data['robs'])
 stas_2 /= ny[None,None,None,:]
 stas_2 = stas_2.permute(2,0,1,3).detach().cpu().numpy()
 
-import scipy.stats as st
-snum = st.norm.isf(thresh/ds.num_lags/ds.NC)
-ci = mu[:,:,:,None] + snum*sd[:,:,:,None]/ny.sqrt()
-ci = ci.permute(2,0,1,3).detach().cpu().numpy()
-
-sig = np.mean(np.abs(stas_)>ci, axis=(0,1,2)) 
-plt.plot(sig)
-plt.axhline(thresh)
-np.sum(sig>thresh)
-
-_, bestlag = plot_stas(stas_[...,sig>thresh])
-
-cids = np.where(sig>thresh)[0]
+_, bestlag = plot_stas(stas_[...,cids])
 
 stas_fix = dsfix.get_stas(inds=ctr_inds, square=False)
 stas_fix = stas_fix.detach().cpu().numpy()
@@ -200,18 +197,6 @@ contours = []
 for i, cc in enumerate(cids):
     sum0 = sta_summary(stas_2[...,cc], int(bestlag[i]), label="Free Viewing", plot=True)
     contours.append(sum0['contour'])
-
-# #%%
-
-# stas_fixc = dsfixc.get_stas(square=False)
-
-# #%%
-# from hires import sta_summary
-# stas_fixc2 = dsfixc.get_stas(square=True)
-# contours = []
-# for i, cc in enumerate(cids):
-#     sum0 = sta_summary(stas_fixc2[...,cc], int(bestlag[i]), label="Free Viewing", plot=True)
-#     contours.append(sum0['contour'])
 
 #%% Compare STA on subsets of the data
 
@@ -225,7 +210,7 @@ datafix = dsfixc[:]
 
 nsample = 1
 np.random.seed(1234)
-plot=False
+plot=True
 NC = len(cids)
 ccFVFV = np.zeros((nsample, NC))
 ccFXFX = np.zeros((nsample, NC))
@@ -418,3 +403,6 @@ import seaborn as sns
 sns.despine(trim=True, offset=-10)
 
 plt.savefig(os.path.join(fig_dir, 'FXFV_summary.pdf'))
+# %%
+len(ccFXFXmu)
+# %%

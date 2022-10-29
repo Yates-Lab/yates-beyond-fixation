@@ -3,10 +3,15 @@
 import sys
 import os
 
+
+
 # setup paths
 sys.path.insert(0, '/home/jake/Data/Repos/')
 sys.path.insert(0, '/home/jake/Data/Repos/yates-beyond-fixation/scripts/')
 fig_dir = '/home/jake/Data/Repos/yates-beyond-fixation/figures/fig04'
+
+from NDNT.utils.NDNutils import ensure_dir
+ensure_dir(fig_dir)
 
 import numpy as np
 
@@ -31,10 +36,9 @@ NUM_WORKERS = int(os.cpu_count() / 2)
 
 
 #%% Load datasets, do fitting
-# from datasets.pixel.utils import get_stim_list
-# sesslist = list(get_stim_list().keys())
-# for i,sess in enumerate(sesslist):
-#     print('%d) %s' %(i,sess))
+''' 
+This requires A LOT of system memory to run ~200GB
+'''
 
 datadir = '/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'
 
@@ -42,115 +46,66 @@ sesslist = ['20191119', '20191121', '20191205', '20191206',  '20191231', '202003
 
 import hires
 for i in range(len(sesslist)):
-    rfsum = hires.fig04_rf_analysis(sesslist[i], datadir=datadir)
+    rfsum = hires.fig04_rf_analysis(sesslist[i], datadir=datadir, overwrite=False)
     Nlin = sum(rfsum['rflin']['sig'] > rfsum['rflin']['thresh']*2)
     Nsquare = sum(rfsum['rfsquare']['sig'] > rfsum['rfsquare']['thresh']*2)
     print('%s\t%2.2f\t\t%d\t%d\t%d' %(rfsum['sessname'], rfsum['num_samples']/rfsum['frate'], Nlin, Nsquare, rfsum['NC']))
 
 
+#%% plot examples
+import seaborn as sns
 
-#%% fit gaussian to spatial RF
-from scipy.optimize import curve_fit
-import scipy.optimize as opt
-isess = 0
-rfsum = hires.fig04_rf_analysis(sesslist[isess], datadir=datadir)
+examplesess = ['20200304', '20191121', '20191205', '20220610']
+examplecells = [28, 11, 7, 108]
 
-field = 'rfsquare'
-cids = np.where(rfsum[field]['sig'] > 0.002)[0]
+for i in range(len(examplesess)):
 
-sum0 = []
-for i, cc in enumerate(cids):
-    sum0.append(hires.sta_summary(rfsum[field]['stas'][...,cc], int(rfsum[field]['bestlag'][cc]), label="Free Viewing", plot=False))
+    rfsum = hires.fig04_rf_analysis(examplesess[i], datadir=datadir)    
 
-#%%
-from datasets.utils import r_squared
-centerx = []
-centery = []
-sdopt = []
-ampopt = []
-r2s = []
+    cc = examplecells[i]-1 # offset because python is 0-based index
+    stans = rfsum['rflinns'][...,cc].numpy()
+    sta = rfsum['rflin']['stas'][...,cc]
+    stans = (stans - np.mean(stans)) / np.std(stans)
+    sta = (sta - np.mean(sta)) / np.std(sta)
 
-def gauss2D(xytuple, x0, y0, sd, base, amplitude):
-    (x,y) = xytuple
-    y = base + amplitude * np.exp( -.5 * ((x - x0)**2 + (y - y0)**2 ) / sd**2 )
-    
-    return y.ravel()
+    vmax = np.max(np.abs(sta))
 
-for cc in range(len(cids)):
+    extent = rfsum['rect'][[1,3,2,0]]/rfsum['ppd']*60
+    extent[2:] = -extent[2:]
+    numlags = sta.shape[0]
+    plt.figure(figsize=(10,3))
+    for ilag in range(numlags):
+        plt.subplot(1,numlags, ilag+1)
+        plt.imshow(np.flipud(np.rot90(sta[ilag,:,:], 1)), vmin=-vmax, vmax=vmax, interpolation='none', cmap='coolwarm', extent=extent, origin='lower')
+        plt.axis("off")
+    plt.savefig(os.path.join(fig_dir, 'example%s_%d_time.pdf' %(examplesess[i], examplecells[i])))
 
-    Im = sum0[cc]['Im'].T
-    Im = Im.astype('float64')
-    sz = Im.shape
-    xax = np.linspace(rfsum['extent'][0], rfsum['extent'][1], sz[1])
-    yax = np.linspace(rfsum['extent'][2], rfsum['extent'][3], sz[0])
-    xx,yy = np.meshgrid(xax, yax)
-
-    ppd = rfsum['ppd']
-    cx = sum0[cc]['center'][0]/ppd+rfsum['extent'][0]
-    cy = sum0[cc]['center'][1]/ppd+rfsum['extent'][3]
-    ar = sum0[cc]['area']/ppd/ppd
-    amp = np.max(Im)
-    extent = rfsum['extent']
-
-
-    x = np.concatenate((xx.flatten()[:,None], yy.flatten()[:,None]), axis=1).astype('float64')
-    sd = np.sqrt(ar).astype('float64')
-
-    y = gauss2D((xx,yy), cx, cy, sd, 0, 1)
     plt.figure()
-    ax = plt.axes()
-    # Im[Im < .2*amp] = 0 
-    ax.imshow(Im, interpolation='none', extent=extent, cmap=plt.cm.gray, origin='lower')
-    ax.plot( sum0[cc]['contour'][:,0]/ppd+extent[0], sum0[cc]['contour'][:,1]/ppd+extent[3], 'r', linewidth=.25)
-    # plt.axis("tight")
-    ax.plot(cx, cy, '.r')
+    blag = rfsum['rflin']['bestlag'][cc]
+    plt.imshow(np.flipud(np.rot90(sta[blag,:,:], 1)), vmin=-vmax, vmax=vmax, interpolation='none', cmap='coolwarm', extent=extent, origin='lower')
+    plt.grid(True)
+    plt.colorbar()
+    sns.despine(offset=0, trim=False)
+    plt.savefig(os.path.join(fig_dir, 'example%s_%d_shift.pdf' %(examplesess[i], examplecells[i])))
 
-    # ax.imshow(y.reshape(sz), interpolation='none', extent=extent, cmap=plt.cm.gray)
-    # ax.plot( sum0[cc]['contour'][:,0]/ppd+extent[0], sum0[cc]['contour'][:,1]/ppd+extent[3], 'r', linewidth=.25)
-
-    # ax.plot(cx, cy, '.r')
-
-
-    # if -np.min(Im) > amp:
-    #     amp = np.min(Im)
-
-    popt, pcov = curve_fit(gauss2D, (xx,yy), Im.flatten(), p0=(cx, cy, sd, 0, amp))
-    # popt = (cx, cy, sd, 0, 1)
-    data_fitted = gauss2D((xx, yy), *popt)
-
-    ax.contour(xx, yy, data_fitted.reshape(sz), 4, colors='r', linewidth=.5)
-    # ax.plot(popt[0], popt[1], 'go')
-    plt.show()
-
-    centerx.append(popt[0])
-    centery.append(popt[1])
-    sdopt.append(popt[2])
-    ampopt.append(popt[-1])
-    r2s.append(r_squared(Im.flatten()[:,None], data_fitted.flatten()[:,None]))
-
-#%%
-
-iix = np.where(np.asarray(r2s) > .5)[0]
-ecc = np.hypot(np.asarray(centerx)[iix], np.asarray(centery)[iix])
-ar = np.asarray(sdopt)[iix]
-
-plt.plot(ecc, ar, '.')
-
+    plt.figure()
+    plt.imshow(np.flipud(np.rot90(stans[blag,:,:], 1)), vmin=-vmax, vmax=vmax, interpolation='none', cmap='coolwarm', extent=extent, origin='lower')
+    plt.grid(True)
+    plt.colorbar()
+    sns.despine(offset=0, trim=False)
+    plt.savefig(os.path.join(fig_dir, 'example%s_%d_noshift.pdf' %(examplesess[i], examplecells[i])))
 
 #%%
 contourx = []
 contoury = []
-centerx = []
-centery = []
 ctx = []
 cty = []
 area = []
 threshs = []
 sessnum = []
-r2s = []
-sdopt = []
-ampopt = []
 sum0 = []
+nsig = []
+ntot = []
 
 for isess in range(len(sesslist)):
     rfsum = hires.fig04_rf_analysis(sesslist[isess], datadir=datadir)
@@ -163,6 +118,8 @@ for isess in range(len(sesslist)):
     extent = [rect[0]/ppd, rect[2]/ppd, rect[3]/ppd, rect[1]/ppd]
 
     NC = len(cids)
+    nsig.append(NC)
+    ntot.append(len(rfsum[field]['sig']))
     sx = int(np.ceil(np.sqrt(NC)))
     sy = int(np.round(np.sqrt(NC)))
     plt.figure(figsize=(sx,sy))
@@ -186,125 +143,103 @@ for isess in range(len(sesslist)):
         plt.plot( sum0[-1]['contour'][:,0]/ppd+extent[0], sum0[-1]['contour'][:,1]/ppd+extent[3], 'r', linewidth=.25)
         plt.axis("tight")
 
+ampshift = []
+ampnoshift = []
+threshlin = []
+nsiglin = []
+for isess in range(len(sesslist)):
+    rfsum = hires.fig04_rf_analysis(sesslist[isess], datadir=datadir)
 
-
+    field = 'rflin'
+    cids = np.where(rfsum[field]['sig'] > 0.002)[0]
+    nsiglin.append(len(cids))
     
+    for cc in cids:
+        # get amplitude with and without shift
+        sta = rfsum['rflin']['stas'][...,cc]
+        sta = (sta - np.mean(sta)) / np.std(sta)
+        stans = rfsum['rflinns'][...,cc].numpy()
+        stans = (stans - np.mean(stans)) / np.std(stans)
+        blag = int(rfsum['rflin']['bestlag'][cc])
+        sta = sta[blag,...]
+        stans = stans[blag,...]
+        summ = hires.sta_summary(rfsum['rflin']['stas'][...,cc], int(rfsum['rflin']['bestlag'][cc]), label="Free Viewing", plot=False)
+        threshlin.append(summ['thresh'])
+        ampshift.append(np.max(sta) - np.min(sta))
+        ampnoshift.append(np.max(stans)-np.min(stans))
+
+#%%
+print("rf square: %d /%d (%2.2f)" %(sum(nsig), sum(ntot), 100*sum(nsig) / sum(ntot)))
+print("rf lin: %d /%d (%2.2f)" %(sum(nsiglin), sum(ntot), 100*sum(nsiglin) / sum(ntot)))
+
+iix = np.where(np.asarray(threshlin) < 1)[0]
+ampnoshift = np.asarray(ampnoshift)
+ampshift = np.asarray(ampshift)
+
+from scipy.stats import ttest_1samp
+plt.figure()
+plt.plot(ampnoshift[iix], ampshift[iix], 'o')
+plt.xlabel("no shift")
+plt.ylabel("shift")
+plt.plot(plt.xlim(), plt.xlim(), 'k')
+
+def geomeanci(x):
+
+    n = len(x)
+    logx = np.log(x)
+    log_gm = np.mean(logx)
+    log_se = np.std(logx)/np.sqrt(n)
+    log_ci_95 = np.asarray([log_gm-2*log_se, log_gm+2*log_se])
     
+    # exponentiate to get back to the geomean / se
+    gm = np.exp(log_gm)
+    ci_95 = np.exp(log_ci_95)
+    return gm, ci_95
 
-    # extent = [rect[0]/ppd, rect[2]/ppd, rect[3]/ppd, rect[1]/ppd]
 
-    # plt.figure(figsize=(sx, sy))
-    # for i,cc in enumerate(ix):
-    #     plt.subplot(sx, sy, i + 1)
-    #     plt.imshow(sum0[cc]['Im'].T, interpolation='none', extent=extent, cmap=plt.cm.gray, origin='lower')
-        
-    #     # fit gaussian
-    #     Im = sum0[cc]['Im'].T
-    #     Im = Im.astype('float64')
-    #     sz = Im.shape
-    #     xax = np.linspace(rfsum['extent'][0], rfsum['extent'][1], sz[1])
-    #     yax = np.linspace(rfsum['extent'][2], rfsum['extent'][3], sz[0])
-    #     xx,yy = np.meshgrid(xax, yax)
 
-    #     ppd = rfsum['ppd']
-    #     cx = sum0[cc]['center'][0]/ppd+rfsum['extent'][0]
-    #     cy = sum0[cc]['center'][1]/ppd+rfsum['extent'][3]
-    #     ar = sum0[cc]['area']/ppd/ppd
-    #     amp = np.max(Im)
+xrat = np.asarray(ampshift)/np.asarray(ampnoshift)
+xrat = xrat[iix]
 
-    #     try:
-    #         popt, pcov = curve_fit(gauss2D, (xx,yy), Im.flatten(), p0=(cx, cy, sd, 0, amp))
-    #     except:
-    #         continue
+gm, ci = geomeanci(xrat)
+print("%2.2f [%2.2f, %2.2f] n=%d" %(gm, ci[0], ci[1], len(xrat)))
 
-    #     data_fitted = gauss2D((xx, yy), *popt)
+res = ttest_1samp(xrat, 0)
+print(res)
 
-    #     plt.contour(xx, yy, data_fitted.reshape(sz), 4, colors='r')
-        
-    
+# np.log(np.asarray(ampshift)) - nnp.asarray(ampnoshift)
 
-    #     centerx.append(popt[0])
-    #     centery.append(popt[1])
-    #     sdopt.append(popt[2])
-    #     ampopt.append(popt[-1])
-    #     r2s.append(r_squared(Im.flatten()[:,None], data_fitted.flatten()[:,None]))
-
-    #     contourx.append(sum0[cc]['contour'][:,0]/ppd+extent[0])
-    #     contoury.append(sum0[cc]['contour'][:,1]/ppd+extent[3])
-    #     ctx.append(sum0[cc]['center'][0]/ppd+extent[0])
-    #     cty.append(sum0[cc]['center'][1]/ppd+extent[3])
-    #     area.append(sum0[cc]['area']/ppd/ppd)
-    #     threshs.append(sum0[cc]['thresh'])
-    #     sessnum.append(isess)
-        
 
 #%%
 iix = np.where(np.asarray(threshs) < .51)[0]
-ecc = np.hypot(np.asarray(ctx), np.asarray(cty))[iix]
-ar = np.asarray(area)[iix]
-plt.plot(ecc, ar, '.')
-
-ar = np.asarray([np.sum(s['rmask']) for s in sum0])[iix]/ppd/ppd
-plt.plot(ecc, ar, '.')
-
-plt.ylim([0,.4])
-
-
-#%%
-i = inds[0]
-Im = sum0[i]['Im']
-contour = sum0[i]['contour']
-r_mask = np.zeros_like(Im, dtype='bool')
-    # Create a contour image by using the contour coordinates rounded to their nearest integer value
-r_mask[np.round(contour[:, 0]).astype('int'), np.round(contour[:, 1]).astype('int')] = 1
-
-Im = (Im - np.min(Im)) / (np.max(Im)-np.min(Im))
-plt.subplot(1,2,1)
-plt.imshow(r_mask)
-plt.subplot(1,2,2)
-plt.imshow(r_mask + (Im > .5))
-
-#%% 
-inds = np.where(np.asarray(area) < 0.05)[0]
-for i in inds:
-    plt.figure()
-    plt.subplot(1,2,1)
-    plt.imshow(sum0[i]['Im'])
-    plt.subplot(1,2,2)
-    plt.imshow(sum0[i]['rmask'])
-
-#%%
-
-
-iix = np.where(np.asarray(r2s) > .5)[0]
-ecc = np.hypot(np.asarray(centerx)[iix], np.asarray(centery)[iix])
-ar = np.abs(np.asarray(sdopt)[iix])
-
-plt.plot(ecc, ar, '.')
-iix = np.where(np.asarray(threshs) < .51)[0]
-ecc = np.hypot(np.asarray(ctx), np.asarray(cty))[iix]
-ar = np.asarray(area)[iix]
-plt.plot(ecc, ar, '.')
-
-plt.ylim([0,.4])
-#%%
-thresh = np.asarray(threshs)
-ecc = np.hypot(np.asarray(centerx), np.asarray(centery))
+ecc = np.hypot(np.asarray(ctx), np.asarray(cty))
 ar = np.asarray(area)
-ix = thresh < .55
-plt.plot(ecc[ix], ar[ix], '.')
-plt.ylim([0, .4])
+for isess in np.unique(sessnum):
+    ii = np.intersect1d(np.where(isess==np.asarray(sessnum))[0], iix)
+    plt.plot(ecc[ii], ar[ii], '.', label=sesslist[isess])
+
+# ar = np.asarray([np.sum(s['rmask']) for s in sum0])[iix]/ppd/ppd
+# plt.plot(ecc, ar, '.')
+plt.legend()
+plt.ylim([0,.4])
+
+
+
+#%%
+iix = np.where(np.asarray(threshs) < .71)[0]
+ecc = np.hypot(np.asarray(ctx), np.asarray(cty))[iix]
+ar = np.asarray(area)[iix]
+plt.plot(ecc, ar, '.')
+plt.ylim([0,.4])
+
+from scipy.io import savemat
+savemat(os.path.join(fig_dir, 'eccentricitydata.mat'), {'ecc': ecc, 'area': ar})
+
 
 #%%
 plt.figure()
 for i in range(len(area)):
-    plt.plot(contourx[i], contoury[i], alpha=.3)
-
-
-    #%%
-    plt.figure()
-    for cc in range(len(sum0)):
-        plt.plot( sum0[cc]['contour'][:,0]/ppd+extent[0], sum0[cc]['contour'][:,1]/ppd+extent[3], linewidth=.25)
+    plt.plot(contourx[i], -contoury[i], alpha=.1)
 
 
 #%%
@@ -487,3 +422,92 @@ plt.subplot(1,2,1)
 plt.imshow(rf2['stas'][rf2['bestlag'][cc],:,:,cc])
 plt.subplot(1,2,2)
 plt.imshow(rf['stas'][rf2['bestlag'][cc],:,:,cc])
+
+
+#%% fit gaussian to spatial RF
+from scipy.optimize import curve_fit
+import scipy.optimize as opt
+isess = 0
+rfsum = hires.fig04_rf_analysis(sesslist[isess], datadir=datadir)
+
+field = 'rfsquare'
+cids = np.where(rfsum[field]['sig'] > 0.002)[0]
+
+sum0 = []
+for i, cc in enumerate(cids):
+    sum0.append(hires.sta_summary(rfsum[field]['stas'][...,cc], int(rfsum[field]['bestlag'][cc]), label="Free Viewing", plot=False))
+
+
+#%%
+from datasets.utils import r_squared
+centerx = []
+centery = []
+sdopt = []
+ampopt = []
+r2s = []
+
+def gauss2D(xytuple, x0, y0, sd, base, amplitude):
+    (x,y) = xytuple
+    y = base + amplitude * np.exp( -.5 * ((x - x0)**2 + (y - y0)**2 ) / sd**2 )
+    
+    return y.ravel()
+
+for cc in range(len(cids)):
+
+    Im = sum0[cc]['Im'].T
+    Im = Im.astype('float64')
+    sz = Im.shape
+    xax = np.linspace(rfsum['extent'][0], rfsum['extent'][1], sz[1])
+    yax = np.linspace(rfsum['extent'][2], rfsum['extent'][3], sz[0])
+    xx,yy = np.meshgrid(xax, yax)
+
+    ppd = rfsum['ppd']
+    cx = sum0[cc]['center'][0]/ppd+rfsum['extent'][0]
+    cy = sum0[cc]['center'][1]/ppd+rfsum['extent'][3]
+    ar = sum0[cc]['area']/ppd/ppd
+    amp = np.max(Im)
+    extent = rfsum['extent']
+
+
+    x = np.concatenate((xx.flatten()[:,None], yy.flatten()[:,None]), axis=1).astype('float64')
+    sd = np.sqrt(ar).astype('float64')
+
+    y = gauss2D((xx,yy), cx, cy, sd, 0, 1)
+    plt.figure()
+    ax = plt.axes()
+    # Im[Im < .2*amp] = 0 
+    ax.imshow(Im, interpolation='none', extent=extent, cmap=plt.cm.gray, origin='lower')
+    ax.plot( sum0[cc]['contour'][:,0]/ppd+extent[0], sum0[cc]['contour'][:,1]/ppd+extent[3], 'r', linewidth=.25)
+    # plt.axis("tight")
+    ax.plot(cx, cy, '.r')
+
+    # ax.imshow(y.reshape(sz), interpolation='none', extent=extent, cmap=plt.cm.gray)
+    # ax.plot( sum0[cc]['contour'][:,0]/ppd+extent[0], sum0[cc]['contour'][:,1]/ppd+extent[3], 'r', linewidth=.25)
+
+    # ax.plot(cx, cy, '.r')
+
+
+    # if -np.min(Im) > amp:
+    #     amp = np.min(Im)
+
+    popt, pcov = curve_fit(gauss2D, (xx,yy), Im.flatten(), p0=(cx, cy, sd, 0, amp))
+    # popt = (cx, cy, sd, 0, 1)
+    data_fitted = gauss2D((xx, yy), *popt)
+
+    ax.contour(xx, yy, data_fitted.reshape(sz), 4, colors='r', linewidth=.5)
+    # ax.plot(popt[0], popt[1], 'go')
+    plt.show()
+
+    centerx.append(popt[0])
+    centery.append(popt[1])
+    sdopt.append(popt[2])
+    ampopt.append(popt[-1])
+    r2s.append(r_squared(Im.flatten()[:,None], data_fitted.flatten()[:,None]))
+
+#%%
+
+iix = np.where(np.asarray(r2s) > .5)[0]
+ecc = np.hypot(np.asarray(centerx)[iix], np.asarray(centery)[iix])
+ar = np.asarray(sdopt)[iix]
+
+plt.plot(ecc, ar, '.')
