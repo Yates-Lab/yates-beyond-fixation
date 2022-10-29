@@ -96,6 +96,28 @@ probex = cellfun(@(x) x.PR.ProbeHistory(:,1), Exp.D(validTrials(:)), 'uni', 0);
 probey = cellfun(@(x) x.PR.ProbeHistory(:,2), Exp.D(validTrials(:)), 'uni', 0);
 probeid = cellfun(@(x) x.PR.ProbeHistory(:,3), Exp.D(validTrials(:)), 'uni', 0);
 
+ntdots = cellfun(@(x) size(x,1), xpos);
+ntprobe = cellfun(@(x) size(x, 1), probex);
+if ~all(ntdots==ntprobe)
+    disp('Fixing probe samples')
+    ntrials = numel(probex);
+    for itrial = 1:ntrials
+        nt = numel(frameTimes{itrial});
+
+        tmpx = nan(nt,1);
+        tmpy = nan(nt,1);
+        tmpid = nan(nt,1);
+        tmpx(1:ntprobe(itrial)) = probex{itrial};
+        tmpy(1:ntprobe(itrial)) = probey{itrial};
+        tmpid(1:ntprobe(itrial)) = probeid{itrial};
+
+        probex{itrial} = tmpx;
+        probey{itrial} = tmpy;
+        probeid{itrial} = tmpid;
+    end
+end
+
+
 % check if two conditions were run a
 nd = cellfun(@(x) size(x,2), xpos);
 xpos = cell2mat(xpos(nd == max(nd)));

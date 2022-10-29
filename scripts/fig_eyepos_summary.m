@@ -1,6 +1,6 @@
 figDir = 'figures/supplemental';
 
-fid = 1; % print to command window
+fid = fopen(fullfile(figDir, 'summary.txt'), 'w'); % print to command window
 
 clear S;
 addpath scripts/
@@ -15,7 +15,7 @@ folderlist = [folderlist; arrayfun(@(x) x.folder, dir(fullfile(datadir, '*.mat')
 
 fprintf(fid, '******************************************************************\n');
 fprintf(fid, '******************************************************************\n');
-fprintf(fid, 'Statistics for (Eye position / saccades)\n\n\n')
+fprintf(fid, 'Statistics for (Eye position / saccades)\n\n\n');
 %% Run main analysis on each session
 fprintf(fid, '******************************************************************\n');
 fprintf(fid, '******************************************************************\n');
@@ -26,7 +26,7 @@ clear S
 
 for sessId = 1:numel(sesslist)
     fprintf(fid, '******************************************************************\n');
-    fprintf(fid, 'Session %d\n', sessId)
+    fprintf(fid, 'Session %d\n', sessId);
     Exp = load(fullfile(folderlist{sessId}, sesslist{sessId}));
     Exp.FileTag = sesslist{sessId};
 
@@ -189,9 +189,9 @@ cnt = cnt ./ sum(cnt,2);
 
 % percent within 5 d.v.a of center of screen
 pc5 = sum(cnt(:,bins < 5),2) ./ sum(cnt,2);
-fprintf(fid, "Monkey %s spent %02.2f %% +- %02.2f of the time < 5 d.v.a\n", monkey, mean(pc5)*100, std(pc5)*100/sqrt(nGood))
+fprintf(fid, "Monkey %s spent %02.2f %% +- %02.2f of the time < 5 d.v.a\n", monkey, mean(pc5)*100, std(pc5)*100/sqrt(nGood));
 pc10 = sum(cnt(:,bins < 10),2) ./ sum(cnt,2);
-fprintf(fid, "Monkey %s spent %02.2f %% +- %02.2f of the time < 10 d.v.a\n", monkey, mean(pc10)*100, std(pc10)*100/sqrt(nGood))
+fprintf(fid, "Monkey %s spent %02.2f %% +- %02.2f of the time < 10 d.v.a\n", monkey, mean(pc10)*100, std(pc10)*100/sqrt(nGood));
 
 figure(1); clf
 x = mean(cnt);
@@ -225,7 +225,7 @@ for m = 1:4
     ix = arrayfun(@(x) strcmpi(x.exname(1), monkeys{m}), S(good));
     n = sum(ix);
     x = nFixationSamples(ix) ./ nTotalSamples(ix) * 60;
-    fprintf(fid, 'Monkey %s median fixation: %02.2f, [%02.2f, %02.2f]\n', monkeys{m}, median(x), prctile(x, 2.5), prctile(x, 97.5))
+    fprintf(fid, 'Monkey %s median fixation: %02.2f, [%02.2f, %02.2f]\n', monkeys{m}, median(x), prctile(x, 2.5), prctile(x, 97.5));
     jitter = randn(n,1);
     plot(m + .1*jitter, x, 'o', 'Color', cmap(m,:), 'MarkerFaceColor', cmap(m,:)); hold on
     plot(m + [-.2 .2], median(x)*[1 1], 'k', 'Linewidth', 2)
@@ -330,3 +330,5 @@ fprintf(fid, 'Grating Duration = %02.2f, range = [%02.2f, %02.2f] minutes (n=%d)
 
 figure(2); clf
 plot(totalTime, 'o')
+
+fclose(fid)

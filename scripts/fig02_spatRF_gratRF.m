@@ -110,25 +110,29 @@ NumUnitsSpikesThresh = cellfun(@(x,y) sum(x.fine.numspikes>spike_thresh & y.nums
 VisuallyDriven = cellfun(@(x) sum(arrayfun(@(y) y.BackImage.sig<.05, x)), Wfs);
 HasRF = cellfun(@(x) sum(arrayfun(@(y) y.r2rf > .4, x.RFs)), Srf);
 HasLinRF = cellfun(@(x) sum(arrayfun(@(y) y.r2 > 0, x.RFs)), Srf);
-
+HasGratRF = cellfun(@(x) sum(x.sig), Sgt);
 DurationGratings = cellfun(@(x) x.numsamples/x.frate, Sgt);
 DurationSpatialDots = cellfun(@(x) x.fine.nsamples/x.fine.frate, Srf);
 T = table(subject, date, NumUnitsTotal, NumUnitsSpikesThresh, VisuallyDriven, HasRF, HasLinRF, HasGratRF, DurationGratings, DurationSpatialDots);
 
 
-m = median(DurationGratings);
-mci = bootci(nboot, @median, DurationGratings);
+m = median(DurationGratings/60);
+mci = bootci(nboot, @median, DurationGratings/60);
 fprintf(fid, "Grating stimulus was run for %2.2f [%2.2f, %2.2f] seconds\n", m, mci(1), mci(2));
-fprintf(fid, "Minimum duration was %2.2f seconds\n\n", min(DurationGratings));
+fprintf(fid, "Minimum duration was %2.2f seconds\n\n", min(DurationGratings/60));
 
-m = median(DurationSpatialDots);
-mci = bootci(nboot, @median, DurationSpatialDots);
-fprintf(fid, "Spatial mapping stimulus was run for %2.2f [%2.2f, %2.2f] seconds\n", m, mci(1), mci(2));
-fprintf(fid, "Minimum duration was %2.2f seconds\n\n", min(DurationSpatialDots));
+m = median(DurationSpatialDots/60);
+mci = bootci(nboot, @median, DurationSpatialDots/60);
+fprintf(fid, "Spatial mapping stimulus was run for %2.2f [%2.2f, %2.2f] minutes\n", m, mci(1), mci(2));
+fprintf(fid, "Minimum duration was %2.2f minutes\n\n", min(DurationSpatialDots/60));
 
 writetable(T, fullfile(figDir, 'summarytable.xls'))
 txt = evalc('disp(T)');
 fprintf(fid, txt);
+
+binsizes = cell2mat(cellfun(@(x) arrayfun(@(y) y.xax(2)-y.xax(1), x.RFs), Srf, 'uni', 0));
+md = mean(binsizes);
+bootci(nboot, @mean, binsizes)
 
 %% Example units
 
@@ -316,7 +320,11 @@ for ex = 1:numel(Srf)
         
          r2 = [r2; Srf{ex}.RFs(cc).r2rf]; % store r-squared
          cvr2 = [cvr2; Srf{ex}.RFs(cc).r2]; % store r-squared
-         ar = [ar; Srf{ex}.RFs(cc).ar];
+         
+         [U, S, V] = svd(Srf{ex}.RFs(cc).C);
+         S = sqrt(diag(S));
+         ar = [ar; pi*prod(S)];
+%          ar = [ar; Srf{ex}.RFs(cc).ar];
 %          ar = [ar; Srf{ex}.fine.conarea(cc)];
 %          ecc = [ecc; hypot(Srf{ex}.fine.conctr(cc,1), Srf{ex}.fine.conctr(cc,2))];
          ecc = [ecc; hypot(mu(1), mu(2))];
@@ -358,29 +366,23 @@ fprintf(fid, '%d (Spatial) and %d (Grating) of %d/%d recorded units (Total) had 
 validwf = wfamp > wfampthresh & numspikesS > spike_thresh; % only include units (single and multi) with an amplitude > 40 microvolts
 
 six = r2 > 0.4 & validwf;
-% six = sigs & validwf;
+
 fprintf(fid, '%d/%d (%2.2f%%) units selective for space\n', sum(six), sum(validwf), 100*sum(six)/sum(validwf));
 
-eccx = .1:.1:20; % eccentricity for plotting fits
-
-% Receptive field size defined as sqrt(RF Area)
-% rosa_fit = exp( -0.764 + 0.495 * log(eccx) + 0.050 * log(eccx) .^2); % rosa 1997 marmoset
-% rosaHat = exp( -0.764 + 0.495 * log(x) + 0.050 * log(x) .^2); % rosa 1997 marmoset
+eccx = .5:.1:20; % eccentricity for plotting fits
  
 figure(2); clf
 x = ecc(six);
-scaleFactor = sqrt(-log(.5))*2; % scaling to convert from gaussian SD to FWHM
-y = ar(six) * scaleFactor;
+y = ar(six);
 
 hPlot = plot(x, y, 'o', 'Color', .8*[1 1 1], 'MarkerFaceColor', .2*[1 1 1], 'MarkerSize', 1.5, 'Linewidth', .25); hold on
 
-
-b0 = [0.764, 0.495 ,0.050]; % initialize with Rosa fit
+b0 = [0.764, 0.495 ,0.050]; % initialize with Rosa fit (Rosa 1997)
 fun = @(p,x) exp( -p(1) + p(2)*log(x) + abs(p(3))*log(x).^2);
 
 options = optimset(@lsqcurvefit);
 options.Display ='none';
-% [bhat,RESNORM,resid,~,~,~,J] = robustlsqcurvefit(fun, b0, x, y, [], [], [], options);
+
 [bhat,RESNORM,resid,~,~,~,J] = lsqcurvefit(fun, b0, x, y, [], [], options);
 bhatci = nlparci(bhat, resid, 'jacobian', J);
 
@@ -398,7 +400,12 @@ fprintf(fid, 'C = %02.2f [%02.2f, %02.2f]\n', bhat(3), bhatci(3,1), bhatci(3,2))
 hold on
 cmap = lines;
 [ypred, delta] = nlpredci(fun, eccx, bhat, resid, 'Jacobian', J);
-plot.errorbarFill(eccx, ypred, delta, 'k', 'FaceColor', cmap(1,:), 'EdgeColor', 'none', 'FaceAlpha', .25);
+
+% because we log-scale the plot
+ypred = max(ypred, 0.01);
+delta((ypred - delta) < 0) = 0;
+
+plot.errorbarFill(eccx, ypred, delta, 'k', 'FaceColor', cmap(1,:), 'EdgeColor', cmap(1,:), 'FaceAlpha', .25);
 hPlot(2) = plot(eccx, fun(bhat,eccx), 'Color', cmap(1,:));
 hPlot(3) = plot(eccx, fun(b0,eccx), 'Color', cmap(5,:));
 
@@ -429,10 +436,7 @@ set(gca, 'YTickLabel', yt)
 
 text(.25, 5, sprintf('n=%d', sum(six)))
 
-% plot.fixfigure(gcf, 7, [2 2], 'FontName', 'Arial', ...
-%     'LineWidth',.5, 'OffsetAxes', false);
 plot.formatFig(gcf, [1.75 1.5], 'nature')
-
 
 saveas(gcf, fullfile(figDir, 'fig02_ecc_vs_RFsize.pdf'))
 
@@ -444,7 +448,7 @@ oriPref(angle(oriBw)~=0) = nan; % ignore untuned units
 validwf= wfamp > 40 & numspikesG > spike_thresh;
 gix = sigg==1 & ~isnan(oriPref) & angle(oriBw)==0 & oriBw < 90;
 gix = gix & validwf;
-fprintf(fid, '%d/%d units selective for Gratings\n', sum(gix), sum(validwf)); 
+fprintf(fid, '%d/%d (%02.2f%%) units selective for Gratings\n', sum(gix), sum(validwf), 100*sum(gix)/sum(validwf)); 
 
 
 figure(1); clf
@@ -494,11 +498,7 @@ options = optimset(@lsqcurvefit);
 options.Display = 'none';
     
 phat = lsqcurvefit(fun, par0, op, real(obw), [0 0 0 0], [max(obw), max(obw), 180, 2], options);
-% plot(0:180, fun(phat, 0:180), 'b')
 r2fit = rsquared(obw, fun(phat, op));
-
-% plot.fixfigure(gcf, 7, [2 2], 'FontName', 'Arial', ...
-%     'LineWidth',.5, 'OffsetAxes', false);
 
 plot.formatFig(gcf, [4 1.5], 'nature')
 saveas(gcf, fullfile(figDir, 'fig02_Orientation.pdf'))

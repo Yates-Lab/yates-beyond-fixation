@@ -350,7 +350,6 @@ for cc = 1:NC
     mnI = min(I(:));
     
     if fitRF(cc) && ip.Results.fitRF
-%         title(cc)
         
         % initial parameter guess
         par0 = [x0 y0 max(2,hypot(x0, y0)*.5) 0 mean(I(:))];
@@ -383,22 +382,15 @@ for cc = 1:NC
         C = [phat(3) phat(4); phat(4) phat(3)]'*[phat(3) phat(4); phat(4) phat(3)];
         
         
-        
         % get r2
         Ihat = gfun(phat, X);
         r2 = rsquared(I(:), Ihat(:));
         stat.r2rf(cc) = r2;
 
         % convert multivariate gaussian to ellipse
-        trm1 = (C(1) + C(4))/2;
-        trm2 = sqrt( ((C(1) - C(4))/2)^2 + C(2)^2);
-        
-        % half widths
-        l1 =  trm1 + trm2;
-        l2 = trm1 - trm2;
-        
-        % convert to sqrt of area to match Rosa et al., 1997
-        ar = sqrt(2 * l1 * l2);
+        [~,s,~] = svd(C);
+        s = sqrt(s);
+        ar = pi*prod(diag(s)); % get area
         ecc = hypot(mu(1), mu(2));
         
         resids = abs(Ihat(:) - I(:));

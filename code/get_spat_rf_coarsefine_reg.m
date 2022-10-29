@@ -1,4 +1,4 @@
-function out = get_spat_rf_coarsefine(Exp)
+function out = get_spat_rf_coarsefine_reg(Exp)
 % wrappper for getting the RFs at coarse and fine scale
 
 % parameters are hard coded
@@ -115,6 +115,9 @@ for i = 1:nrois
 end
 
 %% check which rf stats to use
+
+out.rfstats = rfstats;
+out.rois = rois;
 
 if numel(rfstats)==1
     id = ones(1, numel(rfstats{1}.r2));
