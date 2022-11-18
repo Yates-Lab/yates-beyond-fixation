@@ -101,7 +101,8 @@ def get_stim_url(id):
             '20191119': 'https://www.dropbox.com/s/xxaat202j20kriy/logan_20191119_-20_-10_50_60_0_19_0_1.hdf5?dl=1',
             '20191231':'https://www.dropbox.com/s/ulpcjfb48c6dyyf/logan_20191231_-20_-10_50_60_0_19_0_1.hdf5?dl=1',
             '20200304': 'https://www.dropbox.com/s/5tj5m2rp0wht8z2/logan_20200304_-20_-10_50_60_0_19_0_1.hdf5?dl=1',
-            '20220601': 'https://www.dropbox.com/s/v85m0b9kzwiowqm/allen_20220601_-80_-50_10_50_1_0_19_0_1.hdf5?dl=1'
+            '20220601': 'https://www.dropbox.com/s/v85m0b9kzwiowqm/allen_20220601_-80_-50_10_50_1_0_19_0_1.hdf5?dl=1',
+            '20220610': 'https://www.dropbox.com/s/0tkwqlfjdarkrqm/allen_20220610_-80_-50_10_50_1_0_1_19_0_1.hdf5?dl=1'
         }
     
     if id not in urlpath.keys():
@@ -118,6 +119,7 @@ def get_shifter_url(id):
             '20191205': 'https://www.dropbox.com/s/r56wt4rfozmjiy8/shifter_20191205_kilowf.p?dl=1',
             '20191206': 'https://www.dropbox.com/s/qec8cats077bx8c/shifter_20191206_kilowf.p?dl=1',
             '20200304': 'https://www.dropbox.com/s/t0j8k55a8jexgt4/shifter_20210304_kilowf.p?dl=1',
+            '20220610': 'https://www.dropbox.com/s/3ilpht9jw0insvu/shifter_20220610_kilo.p?dl=1',
         }
     
     if id not in urlpath.keys():
