@@ -111,7 +111,7 @@ def fit_session(sessname, dirpath, overwrite=False):
     # # %%
 
     NC = ws.shape[-1]
-    cids = np.where(llval>0)[0]
+    cids = np.arange(NC)
     sx = int(np.ceil(np.sqrt(NC)))
     sy = int(np.round(np.sqrt(NC)))
 
@@ -169,6 +169,31 @@ def fit_session(sessname, dirpath, overwrite=False):
     plt.savefig('../figures/MT_RF/examples_temporal_%s.pdf' %sessname)
     plt.show()
 
+    # plot tuning curves
+    
+    plt.figure(figsize=(10,10))
+    for ii,cc in enumerate(cids):
+        rf = mt.get_rf(ws, cc)
+
+        plt.subplot(sx, sy,ii+1)
+        try:
+            tc = mt.plot_tuning_curve(cc, rf['amp'])
+
+            if ii % 3 != 0:
+                plt.yticks([])
+        
+            if ii < 6:
+                plt.xticks([])
+
+            plt.axhline(0, color='k')
+        except:
+            pass
+
+        
+        
+    plt.savefig('../figures/MT_RF/examples_tuning_%s.pdf' %sessname)
+    plt.show()
+
     import seaborn as sns
     plt.rcParams.update({'font.size': 6})
     rfs = []
@@ -195,7 +220,7 @@ def fit_session(sessname, dirpath, overwrite=False):
             plt.xlabel('Azimuth (d.v.a.)')
             plt.ylabel('Elevation (d.v.a)')
             # plt.show()
-            plt.savefig('../figures/example_spatial_%s_%d.pdf' %(sessname,cc))
+            plt.savefig('../figures/MT_RF/example_spatial_%s_%d.pdf' %(sessname,cc))
 
             plt.figure(figsize=(2,2))
             plt.plot(rf['lags'], rf['tpeak']*100, '-o', color=plt.cm.coolwarm(np.inf), ms=3)
@@ -206,7 +231,7 @@ def fit_session(sessname, dirpath, overwrite=False):
             plt.axhline(0, color='gray')
             sns.despine(offset=0, trim=True)
             # plt.show()
-            plt.savefig('../figures/example_temporal_%s_%d.pdf' %(sessname,cc))
+            plt.savefig('../figures/MT_RF/example_temporal_%s_%d.pdf' %(sessname,cc))
 
             plt.figure(figsize=(2,2))
             tc = mt.plot_tuning_curve(cc, rf['amp'])
@@ -244,6 +269,7 @@ def fit_session(sessname, dirpath, overwrite=False):
 
 
 # %% fit them all
+llvals = []
 r2s = []
 dpref = []
 bw = []
@@ -252,10 +278,11 @@ num_spikes_sess = []
 num_samples = []
 frates = []
 weights = np.empty([2,15,15,18,0])
+tcs = []
 
 for i in range(len(sess_list)):
     sessname = sess_list[i]
-    sessfit = fit_session(sessname, dirpath=dirpath)
+    sessfit = fit_session(sessname, dirpath=dirpath, overwrite=True)
     mt = MTDotsDataset(sessname, dirpath)
     NT = len(mt)
     frate = int(1/np.median(np.diff(mt.frameTime)))
@@ -268,7 +295,9 @@ for i in range(len(sess_list)):
     print("Done")
     plt.close("all")
     
-    weights = np.append(weights, sessfit['glm'].core.lin0.get_weights(), axis=4)
+    weights = np.append(weights, sessfit['glm'].core.lin0.get_weights()[:,:,:,:,sessfit['cids']], axis=4)
+    # weights = np.append(weights, sessfit['glm'].core.lin0.get_weights(), axis=4)
+    llvals + list(sessfit['llval'])
 
     r = [sessfit['tcs'][cc]['r2'][0] for cc in range(len(sessfit['tcs']))]
     r2s = r2s + r
@@ -278,7 +307,10 @@ for i in range(len(sess_list)):
     b = [sessfit['tcs'][cc]['popt'][1] for cc in range(len(sessfit['tcs']))]
     bw = bw + b
 
+    tcs = tcs + sessfit['tcs']
+
 #%% Some summary
+bw = np.asarray(bw)
 def rad2deg(rad):
     return rad/np.pi*180
 
@@ -297,7 +329,7 @@ ntot = 0
 
 for i in range(len(sess_list)):
     sessname = sess_list[i]
-    sessfit = fit_session(sessname, dirpath=dirpath)
+    sessfit = fit_session(sessname, dirpath=dirpath, overwrite=False)
     
     ngood = len(sessfit['tcs'])
     ngoodtot += ngood
@@ -338,8 +370,72 @@ plt.hist(wrapto360(rad2deg(dpref[ix])), bins=np.arange(0,350,15))
 plt.show()
 
 
-# %%
-sessfit['tcs'][0]['pcov'][0]
-# %%
+# # %% examples
+# sessname = '20190120'
+# sessfit = fit_session(sessname, dirpath=dirpath)
+# mt = MTDotsDataset(sessname, dirpath)
 
+# #%%
+
+
+
+# %%
+# cids = np.where(r2 > 0)[0]
+import seaborn as sns
+# cids = [44, 60, 67, 68, 91, 93, 94, 96, 98, 104, 105, 113, 125, 148, 150, 151, 156, 164, 166, 183, 190, 191, 196, 203, 208, 223, 237]
+cids = np.arange(len(r2))
+for cc in cids:
+    print('cell %d' %cc)
+
+    rf = mt.get_rf(weights, cc)
+
+    xx = np.meshgrid(mt.xax, mt.yax)
+    dx = rf['dx']
+    dy = rf['dy']
+    amp = rf['amp']
+
+    plt.figure(figsize=(2,6))
+    plt.subplot(3,1,1)
+    plt.quiver(xx[0]-np.mean(xx[0]), xx[1]-np.mean(xx[1]), dx/np.max(amp), dy/np.max(amp), amp,
+                    pivot='tail', scale=10, width=.01,
+                    cmap=plt.cm.coolwarm)
+
+    plt.axhline(0, color='gray', linewidth=.25)
+    plt.axvline(0, color='gray', linewidth=.25)
+
+    plt.xlabel('Azimuth (d.v.a.)')
+    plt.ylabel('Elevation (d.v.a)')
+    plt.xticks(np.arange(-15, 20, 5))
+    plt.yticks(np.arange(-15, 20, 5))
+
+    # plt.show()
+    # plt.savefig('../figures/example_spatial_%s_%d.pdf' %(sessname,cc))
+
+    plt.subplot(3,1,2)
+    plt.plot(rf['lags'], rf['tpeak']*100, '-o', color=plt.cm.coolwarm(np.inf), ms=3)
+    plt.plot(rf['lags'], rf['tmin']*100, '-o', color=plt.cm.coolwarm(-np.inf), ms=3)
+    plt.xlabel('Lags (ms)')
+    plt.ylabel('Power (along preferred direction)')
+    plt.xticks([0, 50, 100, 150])
+
+    plt.axhline(0, color='gray')
+    # sns.despine(offset=0, trim=True)
+                # plt.show()
+                # plt.savefig('../figures/example_temporal_%s_%d.pdf' %(sessname,cc))
+
+    plt.subplot(3,1,3)
+    tc = tcs[cc]
+
+    # plt.subplot(1,3,3)
+    plt.errorbar(tc['dirs'], tc['tuning_curve'], tc['tuning_curve_ci'], marker='o', linestyle='none', markersize=3, color='k')
+    plt.plot(tc['thetas'], tc['fit'])
+    plt.xlabel('Direction')
+    plt.ylabel('Firing Rate (sp/s)')
+
+    plt.xticks(np.arange(0,365,90))
+
+    plt.ylim(ymin=0)
+    sns.despine(offset=0, trim=True)
+            # plt.show()
+    plt.savefig('../figures/MT_RF/example_%d.pdf' %cc)
 # %%
