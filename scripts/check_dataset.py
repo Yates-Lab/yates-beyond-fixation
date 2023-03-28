@@ -41,7 +41,7 @@ from models.utils import plot_stas
 
 from datasets.pixel.utils import get_stim_list
 sesslist = list(get_stim_list().keys())
-sessname = sesslist[12]
+sessname = sesslist[19]
 # datadir = '/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'
 datadir = '/Users/jake/Dropbox/Datasets/Mitchell/stim_movies/'
 NBname = 'shifter_{}'.format(sessname)
@@ -57,7 +57,7 @@ ds = Pixel(datadir,
     download=True,
     valid_eye_rad=valid_eye_rad,
     ctr=np.array([0,0]),
-    fixations_only=True,
+    fixations_only=False,
     load_shifters=False,
     spike_sorting='kilowf',
     covariate_requests={
@@ -71,15 +71,41 @@ print("Done")
 from copy import deepcopy
 dims_orig = deepcopy(ds.dims)
 
+#%%
+%matplotlib ipympl
+batch_size = 1000
+
+from torch.utils.data import DataLoader
+dloader = DataLoader(ds, batch_size=batch_size, shuffle=True)
+
+diter = iter(dloader)
+
+#%%
+%matplotlib inline
+data = next(diter)
+
+plt.plot(torch.diff(data['frame_times'], dim=0).numpy().flatten(), '.')
+plt.ylim([0, 1/60])
+
+plt.figure()
+plt.subplot(3,1,1)
+plt.plot(data['frame_times'], data['eyepos'], '.')
+
+i,j = np.where(data['robs'].numpy())
+plt.subplot(2,1,2)
+plt.plot(data['frame_times'][i], j, '|')
+
+#%%
+
 
 #%% get STA on the Gabor stimulus
 gab_inds = np.where(np.in1d(ds.valid_idx, ds.stim_indices[ds.sess_list[0]]['Gabor']['inds']))[0].tolist()
 
-# stas0 = ds.get_stas(inds=gab_inds, square=False)
-# stas = ds.get_stas(inds=gab_inds, square=True)
+stas0 = ds.get_stas(inds=gab_inds, square=False)
+stas = ds.get_stas(inds=gab_inds, square=True)
 
-stas0 = ds.get_stas(square=False)
-stas = ds.get_stas(square=True)
+# stas0 = ds.get_stas(square=False)
+# stas = ds.get_stas(square=True)
 
 #%%
 FracDF_include = .2

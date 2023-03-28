@@ -138,6 +138,7 @@ if ip.Results.usePTBdraw
 
     PsychImaging('AddTask', 'General', 'UseRetinaResolution');
     PsychImaging('AddTask','General','FloatingPoint32BitIfPossible', 'disableDithering',1);
+%     PsychImaging('AddTask', 'General', 'UseVirtualFramebuffer')
 
     % Applies a simple power-law gamma correction
     PsychImaging('AddTask','FinalFormatting','DisplayColorCorrection','SimpleGamma');

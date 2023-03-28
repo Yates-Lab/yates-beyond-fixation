@@ -82,6 +82,7 @@ for isess = 3
     plot(ctr(1), ctr(2), 'or')
     S.rect = round([ctr ctr]) + [-1 -1 1 1]*winsize/2;
 
+
     in_pixels = false;
     if in_pixels
         ppd = 1;
@@ -104,13 +105,12 @@ for isess = 3
 
     plot.fixfigure(gcf, 12, [4 4]);
     saveas(gcf, fullfile('figures/hires_export', sprintf('%s_roi.pdf', strrep(processedFileName, '.mat', ''))) )
-
+    % pixels run down so enforce this here
+    S.rect([2 4]) = sort(-S.rect([2 4]));
 
     %% Do high-res reconstruction using PTB (has to replay the whole experiment)
     Exp.FileTag = processedFileName;
-    % pixels run down so enforce this here
-    S.rect([2 4]) = sort(-S.rect([2 4]));
-    
+
     fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true);
 
 end

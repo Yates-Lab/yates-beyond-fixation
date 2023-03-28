@@ -7,8 +7,8 @@ setpref('FREEVIEWING', 'PROCESSED_DATA_DIR', '~/Dropbox/MarmoLabWebsite/PSA/DDPI
 
 S = struct();
 
-S.rawFilePath = 'Allen_2022-08-05_13-24-54_V1_64b';
-S.processedFileName = 'allen_20220805';
+S.rawFilePath = 'Allen_2022-06-10_13-05-49_V1_64b';
+S.processedFileName = 'allen_20220610';
 S.spikeSorting = 'kilo';
 
 %% Run import

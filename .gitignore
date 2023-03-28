@@ -139,3 +139,5 @@ figures/fig02/*.xls
 scripts/*.png
 scripts/*.pt
 *.txt
+*.DS_Store
+*.gif

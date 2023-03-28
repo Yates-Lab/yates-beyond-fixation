@@ -46,7 +46,7 @@ def gabor(xi,yi,mu=(0,0), sigma=(1,1), freq=1, ori=45, phase=0):
     return carrier*gauss
 
 
-rf = gabor(xi,yi, freq=4, sigma=(.3,.3))
+rf = gabor(xi,yi, freq=4, sigma=(.5,.5))
 plt.figure()
 plt.imshow(rf)
 
@@ -137,7 +137,7 @@ def interp_get(Ibig, Ismalldims, x, y):
 #%%
 plt.figure()
 RFscreen = np.zeros((w,h))
-plt.imshow(interp_place(RFscreen, rf, 200.2,50.5))
+plt.imshow(interp_place(RFscreen, rf, 200.2,50.5), cmap='gray', vmin=-50, vmax=50)
 plt.show()
 
 # %% get eye trace
@@ -161,8 +161,73 @@ np.random.seed(seed)
 stim = np.random.randn(NT, w, h)
 
 print("Done")
-#%%
+#%% get animation blank screen
+from matplotlib import animation
 
+frame = 0
+RFscreen = np.zeros((w,h))
+
+Im = interp_place(RFscreen, rf, xeye[frame],yeye[frame])
+
+fig = plt.figure()
+im = plt.imshow(Im, interpolation='none', cmap='gray', vmin=-50, vmax=50)
+plt.axis("off")
+
+def animate(i):
+    RFscreen = np.zeros((w,h))
+    Im = interp_place(RFscreen, rf, xeye[i],yeye[i])
+    im.set_data(Im)
+    return im
+
+n = 500
+anim = animation.FuncAnimation(
+    fig, animate, frames=np.arange(1,n),
+    repeat=False)
+
+
+mywriter = animation.FFMpegWriter(fps=30)
+anim.save('movie_blank' + str(1) + '.gif', writer=mywriter)
+
+
+#%%
+#%% get animation blank screen
+from matplotlib import animation
+
+RFscreen = stim[0,:,:].squeeze()*50
+
+Im = interp_place(RFscreen, rf, xeye[frame],yeye[frame])
+
+fig = plt.figure()
+im = plt.imshow(Im, interpolation='none', cmap='gray', vmin=-50, vmax=50)
+plt.axis("off")
+
+def animate(i):
+    RFscreen = np.zeros((w,h))
+    Im = interp_place(RFscreen, rf, xeye[i],yeye[i])
+    im.set_data(Im+stim[i,:,:].squeeze()*50)
+    return im
+
+n = 500
+anim = animation.FuncAnimation(
+    fig, animate, frames=np.arange(1,n),
+    repeat=False)
+
+
+mywriter = animation.FFMpegWriter(fps=30)
+anim.save('movie_noise' + str(1) + '.gif', writer=mywriter)
+
+
+#%%
+plt.figure()
+frame += 1
+# RFscreen = stim[frame,:,:].squeeze()
+# plt.imshow(I, interpolation='none', cmap='gray')
+RFscreen = np.zeros((w,h))
+plt.imshow(interp_place(RFscreen, rf, xeye[frame],yeye[frame]), cmap='gray', vmin=-50, vmax=50)
+# plt.show()
+
+
+#%% get generator
 generator = np.zeros(NT)
 
 for frame in range(NT):
@@ -177,7 +242,8 @@ rate = np.maximum(0, generator/500)**2 # nonlinearity is half-squaring, adjust s
 plt.figure()
 plt.plot( rate )
 
-spikecnt = np.random.poisson(rate)
+# spikecnt = np.random.poisson(rate)
+spikecnt = rate
 
 
 # %%
@@ -200,11 +266,15 @@ plt.figure(figsize=(10,5))
 plt.subplot(1,len(eyetracknoise)+1, 1)
 plt.imshow(rf, cmap='gray', vmin=-np.max(rf), vmax=np.max(rf))
 plt.title('True RF')
+plt.axis("off")
 for i,noise in enumerate(eyetracknoise):
     plt.subplot(1, len(eyetracknoise)+1, i+2)
     sta = get_sta_with_eye_tracking(noise)
-    plt.imshow(sta, cmap=plt.cm.gray)
+    plt.imshow(sta, cmap=plt.cm.gray, vmin=-np.max(sta), vmax=np.max(sta))
+    plt.axis("off")
+    plt.title("Measured")
 
+plt.savefig('eyetrack_perfect_calibration.pdf')
 plt.show()
 
 # %%
@@ -212,8 +282,10 @@ eyetracknoise = [0,1,2,4,8]
 calibration_noise = [1, 1.025, 1.05, 1.1, 1.15]
 plt.figure(figsize=(10,10))
 sta = get_sta_with_eye_tracking(noisesigma=0, calibration=1)
-vmin = np.min(sta)
-vmax = np.max(sta)
+
+vmax = np.max(np.abs(sta))
+# vmin = np.min(sta)
+vmin = -vmax
 
 for i,gain in enumerate(calibration_noise):
     for j,noise in enumerate(eyetracknoise):
@@ -222,8 +294,8 @@ for i,gain in enumerate(calibration_noise):
         sta = get_sta_with_eye_tracking(noisesigma=noise, calibration=gain)
 
         plt.subplot(len(eyetracknoise), len(calibration_noise), j*len(eyetracknoise)+i+1)
-        # plt.imshow(sta, vmin=vmin, vmax=vmax, cmap=plt.cm.gray)
-        plt.imshow(sta, cmap=plt.cm.gray)
+        plt.imshow(sta, vmin=vmin, vmax=vmax, cmap=plt.cm.gray)
+        # plt.imshow(sta, cmap=plt.cm.gray, vmin=)
         plt.axis('off')
 
 plt.savefig('eyetrack_noise_calibration.pdf')

@@ -26,23 +26,23 @@ function plotWaveforms(W, scale, varargin)
         NC = numel(cids);
     end
     
-    SU = false(NC,1);
+    SU = arrayfun(@(x) x.cg, W);
     
     for cc = cids(:)'
-        nw = norm(W(cc).waveform(:,3));
+%         nw = norm(W(cc).waveform(:,3));
 %         SU(cc) = nw > 20 & W(cc).isiL > .1 & W(cc).isiL < 1 & W(cc).uQ > 5 & W(cc).isi(200) < 0;
         if ip.Results.overloadSU
             SU(cc) = true;
-        else
-            SU(cc) = W(cc).isiV < .1;
         end
         
         nts = size(W(1).waveform,1);
         xax = linspace(0, 1, nts) + cc;
-        if SU(cc)
+        if SU(cc) == 2
             clr = cmap(cc,:);
-        else
+        elseif SU(cc) == 1
             clr = .5*[1 1 1];
+        else
+            clr = .9*[1 1 1];
         end
         plot(xax, W(cc).waveform*scale + W(cc).spacing - W(cc).depth, 'Color', clr, 'Linewidth', 2); hold on
         text(mean(xax),  W(cc).spacing(end)+20 - W(cc).depth, sprintf('%d', cc))
