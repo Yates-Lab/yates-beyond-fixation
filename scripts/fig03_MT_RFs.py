@@ -282,7 +282,7 @@ tcs = []
 
 for i in range(len(sess_list)):
     sessname = sess_list[i]
-    sessfit = fit_session(sessname, dirpath=dirpath, overwrite=True)
+    sessfit = fit_session(sessname, dirpath=dirpath, overwrite=False)
     mt = MTDotsDataset(sessname, dirpath)
     NT = len(mt)
     frate = int(1/np.median(np.diff(mt.frameTime)))
@@ -379,13 +379,18 @@ plt.show()
 
 
 
-# %%
-# cids = np.where(r2 > 0)[0]
+# %% Plot examples for figure 3
+# cids = np.where(r2 > 0.7)[0]
 import seaborn as sns
-# cids = [44, 60, 67, 68, 91, 93, 94, 96, 98, 104, 105, 113, 125, 148, 150, 151, 156, 164, 166, 183, 190, 191, 196, 203, 208, 223, 237]
-cids = np.arange(len(r2))
-for cc in cids:
-    print('cell %d' %cc)
+cids = [189, 250, 351]
+
+import pandas as pd
+writer = pd.ExcelWriter('SourceData.xlsx', engine='xlsxwriter')
+fig_3b_data = {}
+fig_3c_data = {}
+
+for ii, cc in enumerate(cids):
+    print('cell %d,%d' %(ii,cc))
 
     rf = mt.get_rf(weights, cc)
 
@@ -408,9 +413,6 @@ for cc in cids:
     plt.xticks(np.arange(-15, 20, 5))
     plt.yticks(np.arange(-15, 20, 5))
 
-    # plt.show()
-    # plt.savefig('../figures/example_spatial_%s_%d.pdf' %(sessname,cc))
-
     plt.subplot(3,1,2)
     plt.plot(rf['lags'], rf['tpeak']*100, '-o', color=plt.cm.coolwarm(np.inf), ms=3)
     plt.plot(rf['lags'], rf['tmin']*100, '-o', color=plt.cm.coolwarm(-np.inf), ms=3)
@@ -419,23 +421,32 @@ for cc in cids:
     plt.xticks([0, 50, 100, 150])
 
     plt.axhline(0, color='gray')
-    # sns.despine(offset=0, trim=True)
-                # plt.show()
-                # plt.savefig('../figures/example_temporal_%s_%d.pdf' %(sessname,cc))
 
+    # add to dataframe
+    fig_3b_data['Neuron %d' %(ii + 1)] = {'lags': rf['lags'], 'in rf': rf['tpeak']*100, 'out rf': rf['tmin']*100}
+    
     plt.subplot(3,1,3)
     tc = tcs[cc]
 
-    # plt.subplot(1,3,3)
     plt.errorbar(tc['dirs'], tc['tuning_curve'], tc['tuning_curve_ci'], marker='o', linestyle='none', markersize=3, color='k')
     plt.plot(tc['thetas'], tc['fit'])
     plt.xlabel('Direction')
     plt.ylabel('Firing Rate (sp/s)')
 
+    fig_3c_data['Neuron %d' %(ii + 1)] = {'direction': tc['dirs'], 'firing rate': tc['tuning_curve'], 'confidence interval': tc['tuning_curve_ci'], 'fit_direction': tc['thetas'], 'fit': tc['fit']}
     plt.xticks(np.arange(0,365,90))
 
     plt.ylim(ymin=0)
     sns.despine(offset=0, trim=True)
-            # plt.show()
+            
     plt.savefig('../figures/MT_RF/example_%d.pdf' %cc)
+
+
+df = pd.concat({'Fig 3b': pd.DataFrame(fig_3b_data), 'Fig 3c': pd.DataFrame(fig_3c_data)}, axis=0)
+
+df.to_excel(writer, sheet_name='Fig 3')
+
+# Save the Excel file and close the writer
+writer.save()
+writer.close()
 # %%
