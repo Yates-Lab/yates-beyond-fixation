@@ -29,6 +29,7 @@ class ShifterModel(Encoder):
             reg_vals={'d2x':0.001, 'd2t':0.001, 'center':0.01},
             reg_readout={'l2':0.001},
             reg_hidden={'l2':0.1},
+            scaffold=None,
             NLtype='relu',
             noise_sigma=0,
             norm_type=1,
@@ -49,11 +50,15 @@ class ShifterModel(Encoder):
             self.cids = cids
             NC = len(cids)
 
+        if scaffold is None:
+            scaffold = list(range(len(filter_width)))
+
         self.core = nn.Sequential()
         self.noise_sigma = noise_sigma
         
         conv = layers.ConvLayer(input_dims=input_dims, num_filters=num_subunits[0],
             filter_dims=filter_width[0], NLtype=NLtype,
+            window='hamming',
             output_norm='batch',
             norm_type=norm_type,
             initialize_center=True,
@@ -73,8 +78,8 @@ class ShifterModel(Encoder):
             
             self.core.add_module('layer{}'.format(l), conv)
 
-        self.core_subunits = sum(num_subunits)
-        self.scaffold = list(range(len(filter_width)))
+        self.core_subunits = sum([num_subunits[i] for i in scaffold])
+        self.scaffold = scaffold
 
         '''
         SHIFTER

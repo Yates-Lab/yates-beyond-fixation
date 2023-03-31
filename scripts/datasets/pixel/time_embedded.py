@@ -1,11 +1,9 @@
 import torch
 from torch.utils.data import Dataset
-import torch.nn.functional as F
 import numpy as np
 import h5py
 import os
-from .utils import get_stim_list, download_set
-from datasets.pixel.utils import shift_im
+from .utils import get_stim_list, download_set, firingrate_datafilter, shift_im
 
 class Pixel(Dataset):
     '''
@@ -14,6 +12,7 @@ class Pixel(Dataset):
             'tent_ctrs' - array of tent centers
     'frame_tent':
             'ntents' - number of tent centers
+    'fixation_num': returns the id of each fixation
         
     '''
     
@@ -33,7 +32,8 @@ class Pixel(Dataset):
         embed_eyepos=False,
         covariate_requests={}, # fixation_num, fixation_onset
         device=torch.device('cpu'),
-        spike_sorting='kilowf'
+        spike_sorting='kilowf',
+        enforce_fixation_shift=False,
     ):
     
         super().__init__()
@@ -150,75 +150,21 @@ class Pixel(Dataset):
 
         # Handle requested covariates
         if 'fixation_num' in covariate_requests.keys():
-            print("Loading fixation number covariate...")
-            fix_inds = self.get_fixation_indices()
-            self.covariates['fixation_num'] = np.zeros((self.covariates['stim'].shape[-1], 1))
-            for num, fix in enumerate(fix_inds):
-                self.covariates['fixation_num'][fix] = num
-            print("Done")
-
+            self.addFixNumCovariate()
+            
         if 'fixation_onset' in covariate_requests.keys():
-            print("Loading fixation onset covariate...")
-            fix_inds = self.get_fixation_indices()
-            fix_start = [fix[0] for fix in fix_inds]
-            # nfix = len(fix_start)
-
-            ctrs = covariate_requests['fixation_onset']['tent_ctrs']
-            step = np.mean(np.diff(ctrs))
-            nlags = len(ctrs)
-
-            sacstim = np.zeros((self.covariates['stim'].shape[-1], 1))
-            sacstim[fix_start] = 1
-
-            # make basis
-            off = ctrs[0] - step
-            if step >= 1:
-                dt = 1 # assuming frame id instead of seconds
-            else:
-                dt = np.median(np.abs(np.diff(self.covariates['frame_times'], axis=0)))
-            t = np.arange(off, ctrs[-1] + step, dt)
-            B = np.maximum(0, 1-np.abs(t[:,None] - ctrs)/step)
-            roll = int(np.round(off/dt))
-            sacstim = np.roll(sacstim, roll, axis=0)
-
-            # zero out invalid after shift
-            if off < 0:
-                sacstim[roll:,0] = 0
-            elif off > 0:
-                sacstim[:roll,0] = 0
-                    
-            # convolve with basis
-            from scipy.signal import fftconvolve
-            sacfull = fftconvolve(sacstim, B, mode="full")
-
-            self.covariates['fixation_onset'] = sacfull[:self.covariates['stim'].shape[-1],:]
-            self.fixation_onset_ctrs = ctrs
-            print("Done")
+            self.addFixOnCovariate(covariate_requests['fixation_onset'])
             
         if 'frame_tent' in covariate_requests.keys():
-            print("Loading frame tent covariate...")
-            ntents = covariate_requests['frame_tent']['ntents']
-            ctrs = np.linspace(self.covariates['frame_times'].min(), self.covariates['frame_times'].max(), ntents)
-            step = np.mean(np.diff(ctrs)/2)
-            nlags = len(ctrs)
+            self.addFrameCovariate(covariate_requests['frame_tent'])
 
-            self.covariates['frame_tent'] = np.zeros((len(self.covariates['frame_times']), nlags))
-            
-            x = np.abs(self.covariates['frame_times'] - ctrs)
-            x = np.maximum(0, ( 1-x/step ))
-    
-            self.covariates['frame_tent'] = x
-            self.frame_tent_ctrs = ctrs
-            print("Done")
-            
-            
         if device is not None:
             self.to_tensor(device)
             
         self.device = device
         if load_shifters:
-            shifters = self.get_shifters(plot=True)
-            self.correct_stim(shifters)
+            shifters = self.get_shifters(plot=False)
+            self.correct_stim(shifters, enforce_fixations=enforce_fixation_shift)
         
         self.shift = None
         from copy import deepcopy
@@ -245,15 +191,17 @@ class Pixel(Dataset):
         self.dims[2] = self._crop_idx[3] - self._crop_idx[2]
 
     def to_tensor(self, device):
+        '''
+        All covariates are stored in a dictionary.
+        Loop over keys and move to tensor on specified device.
+        '''
         for cov in self.covariates.keys():
             self.covariates[cov] = torch.from_numpy(self.covariates[cov].astype('float32')).to(device)
-        # self.stim = torch.tensor(self.stim, dtype=self.dtype, device=device)
-        # self.robs = torch.tensor(self.robs.astype('float32'), dtype=self.dtype, device=device)
-        # self.dfs = torch.tensor(self.dfs.astype('float32'), dtype=self.dtype, device=device)
-        # self.eyepos = torch.tensor(self.eyepos.astype('float32'), dtype=self.dtype, device=device)
-        # self.frame_times = torch.tensor(self.frame_times.astype('float32'), dtype=self.dtype, device=device)
 
     def preload_numpy(self):
+        '''
+        Preload the datasets into memory
+        '''
         
         runninglength = self.runninglength
         ''' 
@@ -263,8 +211,13 @@ class Pixel(Dataset):
                 'robs': np.zeros(  [runninglength, self.NC], dtype=np.float32),
                 'dfs': np.zeros(   [runninglength, self.NC], dtype=np.float32),
                 'eyepos': np.zeros([runninglength, 2], dtype=np.float32),
-                'frame_times': np.zeros([runninglength,1], dtype=np.float32)}
+                'frame_times': np.zeros([runninglength,1], dtype=np.float32),
+                'stimid': np.zeros([runninglength,1], dtype=np.float32),
+                'sessid': np.zeros([runninglength,1], dtype=np.float32)}
 
+        '''
+        Loop over all requested sessions, stimuli
+        '''
         for expt in self.sess_list:
             
             fhandle = self.fhandles[expt]
@@ -278,6 +231,9 @@ class Pixel(Dataset):
 
                     self.covariates['stim'][0, :sz[0], :sz[1], inds] = np.transpose(fhandle[stim][self.stimset]['Stim'][...], [2,0,1])
                     self.covariates['frame_times'][inds] = fhandle[stim][self.stimset]['frameTimesOe'][...].T
+                    stimid = np.where(np.in1d(self.requested_stims, stim))[0][0]
+                    self.covariates['stimid'][inds] = stimid
+                    self.covariates['sessid'][inds] = np.where(np.in1d(expt, self.sess_list))[0][0]
 
                     """ EYE POSITION """
                     ppd = fhandle[stim][self.stimset]['Stim'].attrs['ppd'][0]
@@ -324,8 +280,105 @@ class Pixel(Dataset):
                     for unit in unit_ids:
                         self.covariates['dfs'][inds, unit] = 1
 
+    '''
+    If extra covariates are requested for modeling besides the stimulus, we have to build them into the covariates dictionary.
+    '''
+    def addFixNumCovariate(self, verbose=True):
+        if verbose:
+            print("Loading fixation number covariate...")
+        fix_inds = self.get_fixation_indices()
+        self.covariates['fixation_num'] = np.zeros((self.covariates['stim'].shape[-1], 1))
+        for num, fix in enumerate(fix_inds):
+            self.covariates['fixation_num'][fix] = num
+        if verbose:
+            print("Done")
+
+    def addFixOnCovariate(self, cov, verbose=True):
+        '''
+        Add a covariate to capture per-saccadic effects that cannot be captured by the stimulus
+
+        cov is a dictionary with required field 'tent_ctrs'
+        negative tent_ctrs will occur before fixation onset
 
         
+          ctrs[0]        ...      ctrs[-1]
+            v                        v
+            /\/\/\/\/\/\/\/\/\/\/\/\/\ 
+           / /\/\/\/\/\/\/\/\/\/\/\/\ \ 
+                ^
+            fixation onset
+        '''
+        if verbose:
+            print("Loading fixation onset covariate...")
+        fix_inds = self.get_fixation_indices() 
+        fix_start = [fix[0] for fix in fix_inds]
+
+        ctrs = cov['tent_ctrs'] # the centers of 
+        step = np.mean(np.diff(ctrs))
+        nlags = len(ctrs)
+
+        sacstim = np.zeros((self.covariates['stim'].shape[-1], 1))
+        sacstim[fix_start] = 1
+
+        # make basis
+        off = ctrs[0]
+        if step >= 1:
+            dt = 1 # assuming frame id instead of seconds
+        else:
+            dt = np.median(np.abs(np.diff(self.covariates['frame_times'], axis=0)))
+        t = np.arange(off, ctrs[-1], dt)
+        B = np.maximum(0, 1-np.abs(t[:,None] - ctrs)/step)
+        roll = int(np.round(off/dt))
+        sacstim = np.roll(sacstim, roll, axis=0)
+
+        # zero out invalid after shift
+        if off < 0:
+            sacstim[roll:,0] = 0
+        elif off > 0:
+            sacstim[:roll,0] = 0
+                
+        # convolve with basis
+        from scipy.signal import fftconvolve
+        sacfull = fftconvolve(sacstim, B, mode="full")
+
+        self.covariates['fixation_onset'] = sacfull[:self.covariates['stim'].shape[-1],:]
+        self.fixation_onset_ctrs = ctrs
+        self.fixation_onset_basis = torch.from_numpy(B)
+        if verbose:
+            print("Done")
+    
+    def addFrameCovariate(self, cov, verbose=True):
+        '''
+        Add a covariate to capture slow drift in firing rate throughout
+        The idea is to take all the frames and represent them on a basis across the experiment
+        so that a linear combination of those basis functions creates a slowly drifting baseline firing rate.
+
+        Basis:
+          /\  /\  /\   
+         /  \/  \/  \ 
+        /   /\  /\   \ 
+        Experiment time -->
+
+        '''
+        if verbose:
+            print("Loading frame tent covariate...")
+        
+        ntents = cov['ntents']
+        ctrs = np.linspace(self.covariates['frame_times'].min(), self.covariates['frame_times'].max(), ntents)
+        step = np.mean(np.diff(ctrs)/2)
+        nlags = len(ctrs)
+
+        self.covariates['frame_tent'] = np.zeros((len(self.covariates['frame_times']), nlags))
+        
+        x = np.abs(self.covariates['frame_times'] - ctrs)
+        x = np.maximum(0, ( 1-x/step ))
+
+        self.covariates['frame_tent'] = x
+        self.frame_tent_ctrs = ctrs
+        
+        if verbose:
+            print("Done")
+
     def download_stim_files(self, download=True):
         if not download:
             return
@@ -349,25 +402,29 @@ class Pixel(Dataset):
             sfname = [f for f in os.listdir(self.dirname) if 'shifter_' + sess in f]
                 
             if len(sfname) == 0:
-                from datasets.pixel.utils import download_shifter
+                from datasets.mitchell.pixel.utils import download_shifter
                 download_shifter(sess, self.dirname)
+                
+            import pickle
+            fname = os.path.join(self.dirname, sfname[0])
+            print("Loading shifter from %s" % fname)
+            shifter_res = pickle.load(open(fname, "rb"))
+            if 'valloss' in shifter_res.keys(): # using the new version
+                shifter = shifter_res['shifters'][np.argmin(shifter_res['valloss'])]
+                shifterinfo = {'shifter': shifter, 'dims': shifter_res['input_dims']}
             else:
-                print("Shifter exists")
-                import pickle
-                fname = os.path.join(self.dirname, sfname[0])
-                print("Loading shifter from %s" % fname)
-                shifter_res = pickle.load(open(fname, "rb"))
-                shifter = shifter_res['shifters'][np.argmin(shifter_res['vallos'])]
+                shifter = shifter_res['shifters'][np.argmin(shifter_res['valoss'])] # one with spelling error
+                shifterinfo = {'shifter': shifter}
 
             if plot:
-                from datasets.pixel.utils import plot_shifter
+                from datasets.mitchell.pixel.utils import plot_shifter
                 _ = plot_shifter(shifter, title=sess)
             
-            shifters[sess] = shifter
+            shifters[sess] = shifterinfo
 
         return shifters
 
-    def correct_stim(self, shifters, verbose=True, enforce_fixations=True):
+    def correct_stim(self, shifters, verbose=True, enforce_fixations=False):
         if verbose:
             print("Correcting stim...")
             if enforce_fixations:
@@ -388,22 +445,20 @@ class Pixel(Dataset):
                     print("Correcting stim [%s]" % stim)
                     inds = self.stim_indices[sess][stim]['inds']
 
-                    shift = shifters[sess](self.covariates['eyepos'][inds,:])
+                    shift = shifters[sess]['shifter'](self.covariates['eyepos'][inds,:])
+                    
+                    if 'dims' in shifters[sess].keys():
+                        # TODO: check that width and height are the right dimensions (everything is square so far)
+                        shift[:,0] = shift[:,0] * shifters[sess]['dims'][1] / self.dims[1]
+                        shift[:,1] = shift[:,1] * shifters[sess]['dims'][2] / self.dims[2]
+
                     if enforce_fixations:
                         for ifix in range(num_fix):
                             ii = np.where(np.in1d(inds, fix_inds[ifix]))[0]
                             if len(ii)>0:
                                 shift[ii,:] = shift[ii,:].mean(dim=0)
 
-                    # ninds = len(inds)
-                    # batch_size = 5000
-                    # nbatch = ninds//batch_size + 1
-                    # for ibatch in range(nbatch):
-                    #     ii = np.arange(batch_size)+batch_size*ibatch
-                    #     if ibatch==(nbatch-1):
-                    #         ii = ii[ii < ninds]
-                    #         self.covariates['stim'][...,inds[ii]] = shift_im(self.covariates['stim'][...,inds[ii]].permute(3,0,1,2), shift[ii,:], mode='bicubic', upsample=4).permute(1,2,3,0)
-                    self.covariates['stim'][...,inds] = shift_im(self.covariates['stim'][...,inds].permute(3,0,1,2), shift, mode='bilinear', upsample=2).permute(1,2,3,0)
+                    self.covariates['stim'][...,inds] = shift_im(self.covariates['stim'][...,inds].permute(3,0,1,2), shift, mode='nearest').permute(1,2,3,0) # TODO: should we put upsample back in?
                     self.stim_indices[sess][stim]['corrected'] = True
         
         if verbose:
@@ -457,7 +512,7 @@ class Pixel(Dataset):
 
         return valid
     
-    def get_fixation_indices(self, index_valid=False):
+    def get_fixation_indices(self, index_valid=False, restrict_eyevar=False):
         fixations = []
         for sess in self.sess_list:
             for stim in self.stim_indices[sess].keys():
@@ -468,36 +523,45 @@ class Pixel(Dataset):
                         fix_inds = np.where(np.in1d(self.valid_idx, fix_inds))[0]
                     if len(fix_inds)>0:    
                         fixations.append(fix_inds)
-        
-        num_fix = len(fixations)
-        v = np.zeros(num_fix)
-        for i in range(num_fix):
-            if isinstance(fixations[i], np.int64) or len(fixations[i]) < 10:
-                continue
-            else:
-                if isinstance(self.covariates['eyepos'], torch.Tensor):
-                    v[i] = torch.hypot(self.covariates['eyepos'][fixations[i][5:],0], self.covariates['eyepos'][fixations[i][5:],1]).var().item()
+        if restrict_eyevar:
+            num_fix = len(fixations)
+            v = np.zeros(num_fix)
+            for i in range(num_fix):
+                if isinstance(fixations[i], np.int64) or len(fixations[i]) < 10:
+                    continue
                 else:
-                    v[i] = np.var(np.hypot(self.covariates['eyepos'][fixations[i][5:],0], self.covariates['eyepos'][fixations[i][5:],1]))
+                    if isinstance(self.covariates['eyepos'], torch.Tensor):
+                        v[i] = torch.hypot(self.covariates['eyepos'][fixations[i][5:],0], self.covariates['eyepos'][fixations[i][5:],1]).var().item()
+                    else:
+                        v[i] = np.var(np.hypot(self.covariates['eyepos'][fixations[i][5:],0], self.covariates['eyepos'][fixations[i][5:],1]))
 
-        v[np.isnan(v)] = 100
+            v[np.isnan(v)] = 100
 
-        fixations = [fixations[f] for f in np.where(v < .1)[0]]
+            fixations = [fixations[f] for f in np.where(v < .1)[0]]
 
         return fixations
     
-    def get_train_indices(self, seed=1234, frac_train=0.8):
+    def get_train_indices(self, seed=1234, frac_train=0.8, max_sample=None):
 
-        fixations = self.get_fixation_indices()
+        fixations = self.get_fixation_indices(index_valid=True)
+        fixations = [np.maximum(np.concatenate( (np.arange(f[0]-10, f[0]) , f)), 0) for f in fixations]
+
         nfix = len(fixations)
         np.random.seed(seed)
         train_fix = np.random.choice(nfix, size=int(frac_train*nfix), replace=False)
+        
 
         fixes = np.asarray(fixations, dtype=object)
-
         train_inds = np.concatenate(fixes[train_fix])
-
-        train_inds = np.where(np.in1d(self.valid_idx, train_inds))[0]
+        if max_sample is not None:
+            train_inds = train_inds[:max_sample]
+        
+        unique_inds, ind = np.unique(train_inds, return_index=True)
+        new_inds = np.nan*np.zeros(int(np.max(ind))+1)
+        new_inds[ind] = unique_inds
+        train_inds = new_inds[~np.isnan(new_inds)].astype(int)
+        
+        # train_inds = np.where(np.in1d(self.valid_idx, train_inds))[0]
         val_inds = np.setdiff1d(np.arange(len(self.valid_idx)), train_inds).tolist()
         train_inds = train_inds.tolist()
 
@@ -540,95 +604,92 @@ class Pixel(Dataset):
         calculate STAS on the squared pixels and use that to find a cropping window
         '''
 
-
         self.crop_idx = [0, self.raw_dims[1], 0, self.raw_dims[2]] # set original crop index
 
         if cids is None:
             cids = np.arange(self.covariates['robs'].shape[1])
 
         sta2 = self.get_stas(inds=inds, square=True)
-        spower = sta2[...,cids].std(dim=0)
-        spatial_power = torch.einsum('whn,n->wh', spower, self.covariates['robs'][:,cids].sum(dim=0)/self.covariates['robs'][:,cids].sum())
-        spatial_power[spatial_power < .5*spatial_power.max()] = 0 # remove noise floor
-        spatial_power /= spatial_power.sum()
+        cids = np.intersect1d(cids, np.where(~np.isnan(sta2.std(dim=(0,1,2))))[0])
 
-        xx,yy = torch.meshgrid(torch.arange(0, sta2.shape[1]), torch.arange(0, sta2.shape[2]))
-
-        ctr_x = (spatial_power * yy).sum().item()
-        ctr_y = (spatial_power * xx).sum().item()
-        
-        if plot:
-            import matplotlib.pyplot as plt
-            plt.imshow(spatial_power.detach().numpy())
-            plt.plot(ctr_x, ctr_y, 'rx')
+        spatial_power = sta2[...,cids].std(dim=0).nanmean(dim=2).numpy()
+        ctr_y, ctr_x = np.where(spatial_power==np.max(spatial_power))
 
         x0 = int(ctr_x) - int(np.ceil(win_size/2))
         x1 = int(ctr_x) + int(np.floor(win_size/2))
         y0 = int(ctr_y) - int(np.ceil(win_size/2))
         y1 = int(ctr_y) + int(np.floor(win_size/2))
-
+        
         if plot:
+            import matplotlib.pyplot as plt
+            plt.imshow(spatial_power)
+            plt.plot(ctr_x, ctr_y, 'rx')
             plt.plot([x0,x1,x1,x0,x0], [y0,y0,y1,y1,y0], 'r')
 
         return [y0,y1,x0,x1]
     
-    def get_firing_rate_batch(self, batch_size=1000):
-        r = [] # m
-        rsd = []
-        ft = []
-        ftend = []
+    def get_firing_rate_batch(self, batch_size=1000, inds=None):
+        '''
+        get the average firing rate in batches of size 'batch_size' [default=1000]
 
-        NT = self.covariates['robs'].shape[0]
-        nbatch = NT // batch_size
+        output:
+        r [Nbatch x NC] - average spike count
+        inds [Nbatch x 1] - list of indices that correspond to each batch
+
+        '''
         r = []
-        for i in range(nbatch):
-            rtmp = self.covariates['robs'][range(i*batch_size, i*batch_size+batch_size),:]
-            r.append(rtmp.mean(dim=0).detach().numpy())
-            rsd.append(rtmp.std(dim=0).detach().numpy())
-            ft.append(self.covariates['frame_times'][i*batch_size].detach().numpy())
-            ftend.append(self.covariates['frame_times'][i*batch_size+batch_size].detach().numpy())
+        out_inds = []
+    
 
-        ft = np.asarray(ft).flatten()
-        ftend = np.asarray(ftend).flatten()
-        r = np.asarray(r)
-        rsd = np.asarray(rsd)
-        return r, rsd, ft, ftend
-
-    def compute_datafilters(self, batch_size=240, verbose=False, to_plot=False):
+        if inds is None:
+            inds = np.arange(self.covariates['robs'].shape[0])
         
-        import matplotlib.pyplot as plt
+        NT = len(inds)
+        nbatch = NT // batch_size
 
-        from NDNT.utils.ConwayUtils import firingrate_datafilter
-        fr, _, ft, ftend = self.get_firing_rate_batch(batch_size=batch_size)
-        fr = fr*240
-        df = np.zeros(fr.shape)
-        for cc in range(fr.shape[1]):
-            df[:,cc] = firingrate_datafilter( fr[:,cc], Lmedian=10, Lhole=30, FRcut=1.0, frac_reject=0.1, to_plot=verbose, verbose=verbose )
-
-        if to_plot:
-            plt.figure(figsize=(10,5))
-            plt.imshow(df.T, aspect='auto', interpolation='none')
-            plt.xlabel("Batch")
-            plt.ylabel("Unit ID")
-
-        dfs = df>0
-
-        bad_epochs_start = []
-        bad_epochs_stop = []
-        for cc in range(self.NC):
-            ii = np.where(~dfs[:,cc])[0]
+        for i in range(nbatch):
+            iix = inds[range(i*batch_size, i*batch_size+batch_size)]
+            skips = np.diff(inds) > 1
+            if np.any(skips):
+                iix = iix[:np.where(skips)[0][0]]
             
-            bad_epochs_start.append(ft[ii])
-            bad_epochs_stop.append(ftend[ii])
+            n = len(iix)
+            if n == 0:
+                continue
+            
+            rtmp = self.covariates['robs'][iix,:]
+            out_inds.append(iix)
+            r.append(rtmp.mean(dim=0).detach().numpy())
 
-        frame_times = self.covariates['frame_times'].clone()
+        r = np.asarray(r)
+        return r, out_inds
 
+    def compute_datafilters(self, batch_size=240, Lmedian=10, Lhole=30, FRcut=1.0, frac_reject=0.1, verbose=False, to_plot=False):
+        '''
+        compute datafilters per session, per stimulus, per neuron
+
+        Datafilters creates a mask for the loss function where specific samples are excluded fromt he loss computation.
+
+        Loop over sessions, stimuli, and neurons, looking for extreme deviations in firing rate.
+        These will be masked out of the loss computation.
+        '''
         big_dfs = self.covariates['dfs'].clone()
-        for cc in range(self.NC):
-            for epoch_start, epoch_stop in zip(bad_epochs_start[cc], bad_epochs_stop[cc]):
+        for isess in range(len(self.sess_list)):
+            for istim in range(len(self.requested_stims)):
+                # get indices for this experimental session and stimulus
+                inds = np.where(np.logical_and(self.covariates['sessid']==isess, self.covariates['stimid']==istim))[0]
+
+                fr, out_inds = self.get_firing_rate_batch(batch_size=batch_size, inds=inds)
                 
-                bad = np.where(np.logical_and(frame_times > epoch_start, frame_times < epoch_stop))[0]
-                big_dfs[bad,cc]=0
+                # convert mean count to rate using frame rate
+                frate = self.stim_indices[self.sess_list[isess]][self.requested_stims[istim]]['frate']
+                fr = fr*frate
+
+                # loop over neurons and create datafilter
+                for cc in range(fr.shape[1]):
+                    df_ = firingrate_datafilter( fr[:,cc], Lmedian=Lmedian, Lhole=Lhole, FRcut=FRcut, frac_reject=frac_reject, to_plot=verbose, verbose=verbose )
+                    for ibatch in range(len(df_)):
+                        big_dfs[out_inds[ibatch],cc] = df_[ibatch]
         
         self.covariates['dfs'] = big_dfs
         # remove bad valid indices
