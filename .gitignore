@@ -133,11 +133,11 @@ dmypy.json
 *.ckpt
 *.tfevents.*
 latest_checkpoint.txt
-model.pt
-
+*.pt
 *.xls
 *.png
-*.pt
 *.txt
+*.xlsx
+*.xls
 *.DS_Store
 *.gif

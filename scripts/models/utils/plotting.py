@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_stas(stas, show_zero=True, plot=True, thresh=None):
+def plot_stas(stas, show_zero=True, plot=True, thresh=None, title=None):
     
     NC = stas.shape[-1]
     num_lags= stas.shape[0]
@@ -16,7 +16,9 @@ def plot_stas(stas, show_zero=True, plot=True, thresh=None):
     blag = np.zeros(NC)
 
     if plot:
-        plt.figure(figsize=(sx*3,sy*2))
+        fig = plt.figure(figsize=(sx*3,sy*2))
+    else:
+        fig = None
 
     for cc in range(NC):
         w = stas[:,:,:,cc]
@@ -45,25 +47,23 @@ def plot_stas(stas, show_zero=True, plot=True, thresh=None):
             plt.imshow(w[bestlag,:,:], aspect='auto', interpolation=None, vmin=-v, vmax=v, cmap="coolwarm_r", extent=(-1,1,-1,1))
             plt.title(cc)
         
-        try:
-            if plot:
+        if plot:
+            try:
                 plt.subplot(sx,sy, cc*2 + 2)
-            i,j=np.where(w[bestlag,:,:]==np.max(w[bestlag,:,:]))
-            t1 = stas[:,i[0],j[0],cc]
-            # t1 = w[:,i[0], j[0]]
-            if plot:
+                i,j=np.where(w[bestlag,:,:]==np.max(w[bestlag,:,:]))
+                t1 = stas[:,i[0],j[0],cc]
                 plt.plot(t1, '-ob')
-            i,j=np.where(w[bestlag,:,:]==np.min(w[bestlag,:,:]))
-            # t2 = w[:,i[0], j[0]]
-            t2 = stas[:,i[0],j[0],cc]
-            if plot:
+                i,j=np.where(w[bestlag,:,:]==np.min(w[bestlag,:,:]))
+                t2 = stas[:,i[0],j[0],cc]
                 plt.plot(t2, '-or')
                 if show_zero:
                     plt.axhline(0, color='k')
                     if thresh is not None:
                         plt.axhline(thresh[cc],color='k', ls='--')
-                
-        except:
-            pass
+            except:
+                pass
+        
+        if plot and title is not None:
+            plt.suptitle(title)
     
-    return mu, blag.astype(int)
+    return mu, blag.astype(int), fig

@@ -5,6 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from models.utils import plot_stas
+import random
+import gc
+from copy import deepcopy
 
 def get_max_samples(dataset, device,
     history_size=1,
@@ -1246,5 +1249,44 @@ def fig04_rf_analysis(sessname = '20220610',
     #     plt.axis("tight")
 
     
+def seed_everything(seed):
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    os.environ['PYTHONHASHSEED']=str(seed)
+    torch.cuda.manual_seed(str(seed))
 
+def memory_clear():
+    '''
+        Clear unneeded memory.
+    '''
+    torch.cuda.empty_cache()
+    gc.collect()
+
+def initialize_gaussian_envelope( ws, w_shape):
+    """
+    This assumes a set of filters is passed in, and windows by Gaussian along each non-singleton dimension
+    ws is all filters (ndims x nfilters)
+    wshape is individual filter shape
+    """
+    ndims, nfilt = ws.shape
+    assert np.prod(w_shape) == ndims
+    wx = np.reshape(deepcopy(ws), w_shape + [nfilt])
+    for dd in range(1,len(w_shape)):
+        if w_shape[dd] > 1:
+            L = w_shape[dd]
+            if dd == len(w_shape)-1:
+                genv = np.exp(-(np.arange(L))**2/(2*(L/6)**2))
+            else:
+                genv = np.exp(-(np.arange(L)-L/2)**2/(2*(L/6)**2))
+
+            if dd == 0:
+                wx = np.einsum('abcde, a->abcde', wx, genv)
+            elif dd == 1:
+                wx = np.einsum('abcde, b->abcde', wx, genv)
+            elif dd == 2:
+                wx = np.einsum('abcde, c->abcde', wx, genv)
+            else:
+                wx = np.einsum('abcde, d->abcde', wx, genv)
+    return np.reshape(wx, [-1, nfilt])
 
