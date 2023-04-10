@@ -1,10 +1,9 @@
-import torch
-from torch.utils.data import Dataset
-import torch.nn.functional as F
-import numpy as np
-import h5py
-from tqdm import tqdm
 import os
+from copy import deepcopy
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+# from ...utils import ss
 from datasets.utils import ensure_dir, reporthook
 
 """ Available Datasets:
@@ -16,24 +15,12 @@ def get_stim_list(id=None, verbose=False):
 
     stim_list = {
             '20191119': 'logan_20191119_-20_-10_50_60_0_19_0_1.hdf5',
-            '20191120':'logan_20191120a_-20_-10_50_60_0_19_0_1.hdf5',
+            '20191120a':'logan_20191120a_-20_-10_50_60_0_19_0_1.hdf5',
             '20191121': 'logan_20191121_-20_-20_50_50_0_19_0_1.hdf5',
             '20191122': 'logan_20191122_-20_-10_50_60_0_19_0_1.hdf5',
             '20191205': 'logan_20191205_-20_-10_50_60_0_19_0_1.hdf5',
             '20191206': 'logan_20191206_-20_-10_50_60_0_19_0_1.hdf5',
-            '20191209': 'logan_20191209_-20_-10_50_60_0_19_0_1.hdf5',
-            '20191210': 'logan_20191210_-20_-10_50_60_0_19_0_1.hdf5',
-            '20191220': 'logan_20191220_-20_-10_50_60_0_19_0_1.hdf5',
-            '20191223': 'logan_20191223_-20_-10_50_60_0_19_0_1.hdf5',
-            '20191226': 'logan_20191226_-20_-10_50_60_0_19_0_1.hdf5',
-            '20191230': 'logan_20191230_-20_-10_50_60_0_19_0_1.hdf5',
             '20191231': 'logan_20191231_-20_-10_50_60_0_19_0_1.hdf5',
-            '20200106': 'logan_20200106_-20_-10_50_60_0_19_0_1.hdf5',
-            '20200107': 'logan_20200107_-20_-10_50_60_0_19_0_1.hdf5',
-            '20200109': 'logan_20200109_-20_-10_50_60_0_19_0_1.hdf5',
-            '20200110': 'logan_20200110_-20_-10_50_60_0_19_0_1.hdf5',
-            '20200115': 'logan_20200115_-20_-10_50_60_0_19_0_1.hdf5',
-            '20200226': 'logan_20200226_-20_-10_50_60_0_19_0_1.hdf5',
             '20200304': 'logan_20200304_-20_-10_50_60_0_19_0_1.hdf5',
             '20220216': 'allen_20220216_-60_-50_10_20_0_19_0_1.hdf5',
             '20220601': 'allen_20220601_-80_-50_10_50_1_0_1_19_0_1.hdf5',
@@ -42,9 +29,6 @@ def get_stim_list(id=None, verbose=False):
             '20220610': 'allen_20220610_-80_-50_10_50_1_0_1_19_0_1.hdf5',
             '20220610fix': 'allen_20220610_-80_-50_10_50_0_0_0_19_0_1.hdf5',
             '20220610fixc': 'allen_20220610_-80_-50_10_50_1_0_0_19_0_1.hdf5',
-            '20220805': 'allen_20220805_-78_-33__2_47_1_0_1_19_0_1.hdf5',
-            '20220805fix': 'allen_20220805_-78_-33__2_47_0_0_0_19_0_1.hdf5',
-            '20220805fixc': 'allen_20220805_-78_-33__2_47_1_0_0_19_0_1.hdf5'
         }
 
     if id is None:
@@ -58,43 +42,6 @@ def get_stim_list(id=None, verbose=False):
     
     return stim_list[id]
 
-def get_single_units(id):
-
-    SUs = {
-        '20220601':	[2, 3, 4, 7, 9, 11, 13, 19, 20, 22, 23, 24, 48, 52, 54, 58, 59, 63, 71, 74, 77, 81, 82, 100, 103, 105, 108, 110, 111, 116, 121, 123, 125], 
-        '20220601':	[2, 3, 4, 7, 9, 11, 13, 19, 20, 22, 23, 24, 48, 52, 54, 58, 59, 63, 71, 74, 77, 81, 82, 100, 103, 105, 108, 110, 111, 116, 121, 123, 125],
-        '20220610':	[3, 5, 7, 8, 9, 10, 11, 12, 13, 16, 17, 22, 23, 26, 27, 35, 39, 40, 43, 59, 60, 82, 87, 89, 91, 92, 104, 106, 114, 115, 120, 126, 127, 138, 156, 159],
-        '20220805':	[2, 3, 4, 6, 9, 17, 20, 32, 42, 49, 51, 53, 57, 59, 60, 68, 72, 79, 80],
-        '20191119':	[5, 11, 13, 18, 29, 60, 61, 73],
-        '20191120':	[1, 37, 49, 50],
-        '20191121':	[5, 16, 51, 64, 69, 73],
-        '20191122':	[5, 28, 40],
-        '20191202':	[12, 21, 42],
-        '20191210':	[6, 28],
-        '20191220':	[9, 10, 46],
-        '20191223':	[2, 7],
-        '20191224':	[33, 49],
-        '20191226':	[8, 9, 27],
-        '20191227':	[],
-        '20191230':	[5, 41, 57, 69, 73],
-        '20191231':	[36, 47],
-        '20200106':	[4],
-        '20200107':	[3, 16, 23, 28, 40, 44, 55, 63, 68],
-        '20200109':	[10, 11, 33, 38],
-        '20200110':	[2, 17, 27],
-        '20200115':	[6, 11, 23, 34, 42],
-        '20200228':	[9, 26, 28],
-        '20200229':	[10, 17, 30],
-        '20200302':	[15],
-        '20200303':	[24, 38, 65, 70],
-        '20200304':	[26, 32, 37, 39, 54, 69],
-        '20200306':	[26, 29, 34, 43, 45, 46, 62, 66],
-    }
-
-    if id not in SUs.keys():
-        raise ValueError('Stimulus ID not in SU dict')
-    
-    return SUs[id]
 
 def get_stim_url(id):
     urlpath = {
@@ -153,37 +100,50 @@ def download_shifter(sessname, fpath):
     print("Done")
 
 
-def shift_im(im, shift, mode='nearest', upsample=1):
-        """
-        apply shifter to translate stimulus as a function of the eye position
-        im = N x C x H x W (torch.float32)
-        shift = N x 2 (torch.float32), shift along W and H, respectively
-        """
-        import torch.nn.functional as F
-        import torch
-        affine_trans = torch.tensor([[[1., 0., 0.], [0., 1., 0.]]])
-        sz = im.shape
+def shift_im(stim, shift, affine=False, mode='nearest'):
+    '''
+    Primary function for shifting the intput stimulus
+    Inputs:
+        stim [Batch x channels x height x width] (use Fold2d to fold lags if necessary)
+        shift [Batch x 2] or [Batch x 4] if translation only or affine
+        affine [Boolean] set to True if using affine transformation
+        mode [str] 'nearest' (default)
+    '''
+    import torch.nn.functional as F
+    batch_size = stim.shape[0]
 
-        aff = torch.tensor([[1,0,0],[0,1,0]])
+    # build affine transformation matrix size = [batch x 2 x 3]
+    affine_trans = torch.zeros((batch_size, 2, 3) , dtype=stim.dtype, device=stim.device)
+    
+    if affine:
+        # fill in rotation and scaling
+        costheta = torch.cos(shift[:,2].clamp(-.5, .5))
+        sintheta = torch.sin(shift[:,2].clamp(-.5, .5))
+        
+        scale = shift[:,3]**2 + 1.0
 
-        affine_trans = shift[:,:,None]+aff[None,:,:]
+        affine_trans[:,0,0] = costheta*scale
+        affine_trans[:,0,1] = -sintheta*scale
+        affine_trans[:,1,0] = sintheta*scale
+        affine_trans[:,1,1] = costheta*scale
+
+    else:
+        # no rotation or scaling
         affine_trans[:,0,0] = 1
         affine_trans[:,0,1] = 0
         affine_trans[:,1,0] = 0
         affine_trans[:,1,1] = 1
 
-        n = im.shape[0]
-        grid = F.affine_grid(affine_trans, torch.Size((n, 1, sz[2], sz[3])), align_corners=False)
+    # translation
+    affine_trans[:,0,2] = shift[:,0]
+    affine_trans[:,1,2] = shift[:,1]
 
-        if upsample > 1:
-            upsamp = torch.nn.UpsamplingNearest2d(scale_factor=upsample)
-            im = upsamp(im)
+    grid = F.affine_grid(affine_trans, stim.shape, align_corners=False)
 
-        im2 = F.grid_sample(im, grid, align_corners=False, mode=mode)
+    return F.grid_sample(stim, grid, mode=mode, align_corners=False).detach()
 
-        return im2.detach()
 
-def plot_shifter(shifter, valid_eye_rad=5.2, ngrid = 100, title=None):
+def plot_shifter(shifter, valid_eye_rad=5.2, ngrid = 100, title=None, show=True):
         import matplotlib.pyplot as plt
         xx,yy = np.meshgrid(np.linspace(-valid_eye_rad, valid_eye_rad,ngrid),np.linspace(-valid_eye_rad, valid_eye_rad,ngrid))
         xgrid = torch.tensor( xx.astype('float32').reshape( (-1,1)))
@@ -193,21 +153,120 @@ def plot_shifter(shifter, valid_eye_rad=5.2, ngrid = 100, title=None):
 
         xyshift = shifter(inputs).detach().numpy()
 
-        xyshift/=valid_eye_rad/60 # conver to arcmin
+        # xyshift/=valid_eye_rad/60 # conver to arcmin
         vmin = np.min(xyshift)
         vmax = np.max(xyshift)
 
-        shift = [xyshift[:,0].reshape((ngrid,ngrid))]
-        shift.append(xyshift[:,1].reshape((ngrid,ngrid))) 
-        plt.figure(figsize=(6,3))
-        plt.subplot(1,2,1)
-        plt.imshow(shift[0], extent=(-valid_eye_rad,valid_eye_rad,-valid_eye_rad,valid_eye_rad), interpolation=None, vmin=vmin, vmax=vmax)
-        plt.colorbar()
-        plt.subplot(1,2,2)
-        plt.imshow(shift[1], extent=(-valid_eye_rad,valid_eye_rad,-valid_eye_rad,valid_eye_rad), interpolation=None, vmin=vmin, vmax=vmax)
-        plt.colorbar()
-        plt.show()
+        nshift = xyshift.shape[1]
+        shift = []
+        fig = plt.figure(figsize=(3*nshift,3))
+        for ishift in range(nshift):
+            shift.append(xyshift[:,ishift].reshape((ngrid, ngrid)))
+            plt.subplot(1,nshift, ishift+1)
+            plt.imshow(shift[-1], extent=(-valid_eye_rad,valid_eye_rad,-valid_eye_rad,valid_eye_rad), interpolation=None)
+            plt.colorbar()
+        
+        # # shift = [xyshift[:,0].reshape((ngrid,ngrid))]
+        # # shift.append(xyshift[:,1].reshape((ngrid,ngrid))) 
+        
+        # plt.subplot(1,2,1)
+        # plt.imshow(shift[0], extent=(-valid_eye_rad,valid_eye_rad,-valid_eye_rad,valid_eye_rad), interpolation=None, vmin=vmin, vmax=vmax)
+        # plt.colorbar()
+        # plt.subplot(1,2,2)
+        # plt.imshow(shift[1], extent=(-valid_eye_rad,valid_eye_rad,-valid_eye_rad,valid_eye_rad), interpolation=None, vmin=vmin, vmax=vmax)
         if title is not None:
             plt.suptitle(title)
 
-        return shift
+        if show:
+            plt.show()
+        
+        return shift, fig
+    
+def firingrate_datafilter( fr, Lmedian=10, Lhole=30, FRcut=1.0, frac_reject=0.1, to_plot=False, verbose=False ):
+    # import warnings
+    # warnings.filterwarnings("ignore")
+
+    """Generate data filter for neuron given firing rate over time"""
+    if to_plot:
+        verbose = True
+    def median_smoothing( f, L=5):
+        mout = deepcopy(f)
+        for tt in range(L, len(f)-L):
+            mout[tt] = np.median(f[np.arange(tt-L,tt+L)])
+        return mout
+    mx = median_smoothing(fr, L=Lmedian)
+    df = np.zeros(len(mx))
+    # pre-filter ends
+    m = np.median(fr)
+    v = np.where((mx >= m-np.sqrt(m)) & (mx <= m+np.sqrt(m)))[0]
+    df[range(v[0], v[-1])] = 1
+    m = np.median(fr[df > 0])
+    if m < FRcut:
+        # See if can salvage: see if median of 1/4 of data is above FRcut
+        msplurge = np.zeros(4)
+        L = len(mx)//4
+        for ii in range(4):
+            msplurge[ii] = np.median(mx[range(L*ii, L*(ii+1))])
+        m = np.max(msplurge)
+        if m < FRcut:
+            if verbose:
+                print('  Median criterium fail: %f'%m)
+            return np.zeros(len(mx))
+        # Otherwise back in game: looking for higher median
+    v = np.where((mx >= m-np.sqrt(m)) & (mx <= m+np.sqrt(m)))[0]
+    df = np.zeros(len(mx))
+    df[range(v[0], v[-1]+1)] = 1
+    # Last
+    m = np.median(fr[df > 0])
+    v = np.where((mx >= m-np.sqrt(m)) & (mx <= m+np.sqrt(m)))[0]
+    # Look for largest holes
+    ind = np.argmax(np.diff(v))
+    largest_hole = np.arange(v[ind], v[ind+1])
+    if len(largest_hole) > Lhole:
+        if verbose:
+            print('  Removing hole size=%d'%len(largest_hole))
+        df[largest_hole] = 0
+        # Decide whether to remove one side of hole or other based on consistent firing rate change after the hole
+        chunks = [np.arange(v[0], largest_hole[0]), np.arange(largest_hole[-1], v[-1])]
+        mfrs = [np.median(fr[chunks[0]]), np.median(fr[chunks[1]])]
+
+        if (len(chunks[0]) > len(chunks[1])) & (mfrs[0] > FRcut):
+            dom = 0
+        else: 
+            dom = 1
+        if ((mfrs[dom] > mfrs[1-dom]) & (mfrs[1-dom] < mfrs[dom]-np.sqrt(mfrs[dom]))) | \
+                ((mfrs[dom] < mfrs[1-dom]) & (mfrs[1-dom] > mfrs[dom]+np.sqrt(mfrs[dom]))):
+            #print('eliminating', 1-dom)
+            df[chunks[1-dom]] = 0
+
+    # Eliminate any small islands of validity (less than Lhole)
+    a = np.where(df == 0)[0]  # where there are zeros
+    if len(a) > 0:
+        b = np.diff(a) # the length of islands (subtracting 1: 0 is no island)
+        c = np.where((b > 1) & (b < Lhole))[0]  # the index of the islands that are the wrong size
+        # a[c] is the location of the invalid islands, b[c] is the size of these islands (but first point is zero before) 
+        for ii in range(len(c)):
+            df[a[c[ii]]+np.arange(b[c[ii]])] = 0
+
+    # Final reject criteria: large fraction of mean firing rates in trial well above median poisson limit
+    m = np.median(fr[df > 0])
+    #stability_ratio = len(np.where(Ntrack[df > 0,cc] > m+np.sqrt(m))[0])/np.sum(df > 0)
+    stability_ratio = len(np.where(abs(mx[df > 0]-m) > np.sqrt(m))[0])/np.sum(df > 0)
+    if stability_ratio > frac_reject:
+        if verbose:
+            print('  Stability criteria not met:', stability_ratio)
+        df[:] = 0
+    if to_plot:
+        plt.subplot(211)
+        plt.plot(fr,'b')
+        plt.plot(mx,'g')
+        plt.plot([0,len(fr)], [m, m],'k')
+        plt.plot([0,len(fr)], [m-np.sqrt(m), m-np.sqrt(m)],'r')
+        plt.plot([0,len(fr)], [m+np.sqrt(m), m+np.sqrt(m)],'r')
+        plt.subplot(212)
+        plt.plot(df)
+        plt.show()
+
+    # warnings.filterwarnings("default")
+    
+    return df

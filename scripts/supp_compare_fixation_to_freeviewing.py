@@ -5,6 +5,7 @@ import os
 
 # setup paths
 sys.path.insert(0, '/home/jake/Data/Repos/')
+sys.path.insert(0, '/home/jake/Data/Repos/foundation')
 sys.path.insert(0, '/home/jake/Data/Repos/yates-beyond-fixation/scripts/')
 fig_dir = '/home/jake/Data/Repos/yates-beyond-fixation/figures/supp_fix_freeview'
 
@@ -311,7 +312,7 @@ ccFXFXrawmu = np.mean(ccFXFXraw, axis=0)
 ccFVFVmu = np.mean(ccFVFV, axis=0)
 
 inds = np.argsort(ccFXFXmu)
-example_cells = [inds[-1], inds[31]] #int(.65*NC)
+example_cells = [inds[-2], inds[27]] #int(.65*NC)
 
 
 stas_fv = (sta_FV_sub1 + sta_FV_sub2)/2
@@ -399,8 +400,8 @@ print("Compare FXFX and FVFV")
 print(res)
 
 
-import seaborn as sns
-sns.despine(trim=True, offset=-10)
+# import seaborn as sns
+# sns.despine(trim=True, offset=-10)
 
 plt.savefig(os.path.join(fig_dir, 'FXFV_summary.pdf'))
 # %%

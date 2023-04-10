@@ -213,7 +213,7 @@ class MTDotsDataset(Dataset):
 
         # bootstrap error bars
 
-        # don't sum in STA somputation (all samples preserved)
+        # don't sum in STA computation (all samples preserved)
         dsta = (dXstim * np.expand_dims(self.robs[:,cc].numpy(), axis=1)) / np.sum(dXstim, axis=0) * 100
 
         # resample and compute confidence intervals (memory inefficient)

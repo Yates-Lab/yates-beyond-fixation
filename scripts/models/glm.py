@@ -1,13 +1,12 @@
 import torch
 import torch.nn as nn
 from NDNT import NDN 
-import NDNT.modules.layers as layers
+from NDNT.modules import layers as layers
 from NDNT.metrics.poisson_loss import PoissonLoss_datafilter
 import numpy as np
 from torchvision.transforms import CenterCrop
-from models.base import Encoder
 
-class GQM(Encoder):
+class GQM(nn.Module):
 
     def __init__(self, input_dims,
             NC=None,
@@ -107,7 +106,7 @@ class GLM(GQM):
         super().__init__(input_dims, NC=NC, nquad=nquad, **kwargs)
         self.name = 'GLM-{}'.format(np.asarray(self.cids)).replace('[', '').replace(']','')
 
-class EnergyModel(Encoder):
+class EnergyModel(nn.Module):
 
     def __init__(self, input_dims,
             NC=None,
@@ -235,7 +234,7 @@ class freqGLM(GQM):
 
         return self.output_NL(x)
 
-class sGQM(Encoder):
+class sGQM(nn.Module):
 
     def __init__(self,
             input_dims,
