@@ -57,13 +57,17 @@ These positions look a lot like the output of the shifter network. This is a sim
 This python notebook shows the steps for fitting the shifter model. We do a few tricks to reduce the computational cost. The first is to crop the stimulus even smaller:
 <img width="498" alt="image" src="https://user-images.githubusercontent.com/1760049/230822674-77f804b5-561a-48c2-bcf7-627d85f806eb.png">
 
-After fitting the model, we can look at the performance on the validation set and the effect of shifting on the STAs.
+After fitting the model, we can look at the performance on the validation set.
 <img width="298" alt="image" src="https://user-images.githubusercontent.com/1760049/230822880-a275ff5c-4248-40c2-b96c-471fb302a5c0.png">
 
+And then evaluate the effect of shifting on the STAs.
+
 STAs without shift correction:
+
 <img width="561" alt="image" src="https://user-images.githubusercontent.com/1760049/230823025-27a296a5-d154-4380-9f31-9ea47b1d1ab8.png">
 
 STAs with shift correction:
+
 <img width="555" alt="image" src="https://user-images.githubusercontent.com/1760049/230823069-714d25f4-9958-488c-9c6a-9a44fb2fbc12.png">
 
 If you don't want to use matlab and want to skip the export, email yates@berkeley.edu for the exported stimulus file (it is ~4GB). 
