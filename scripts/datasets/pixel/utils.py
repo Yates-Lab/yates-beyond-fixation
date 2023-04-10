@@ -183,6 +183,9 @@ def plot_shifter(shifter, valid_eye_rad=5.2, ngrid = 100, title=None, show=True)
         return shift, fig
     
 def firingrate_datafilter( fr, Lmedian=10, Lhole=30, FRcut=1.0, frac_reject=0.1, to_plot=False, verbose=False ):
+    # import warnings
+    # warnings.filterwarnings("ignore")
+
     """Generate data filter for neuron given firing rate over time"""
     if to_plot:
         verbose = True
@@ -254,7 +257,6 @@ def firingrate_datafilter( fr, Lmedian=10, Lhole=30, FRcut=1.0, frac_reject=0.1,
             print('  Stability criteria not met:', stability_ratio)
         df[:] = 0
     if to_plot:
-        ss(2,1)
         plt.subplot(211)
         plt.plot(fr,'b')
         plt.plot(mx,'g')
@@ -265,4 +267,6 @@ def firingrate_datafilter( fr, Lmedian=10, Lhole=30, FRcut=1.0, frac_reject=0.1,
         plt.plot(df)
         plt.show()
 
+    # warnings.filterwarnings("default")
+    
     return df

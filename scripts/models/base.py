@@ -1,187 +1,102 @@
 import torch
 import torch.nn as nn
-from NDNT.metrics.poisson_loss import PoissonLoss_datafilter
-from NDNT.modules import layers as layers
+from NDNT import PoissonLoss_datafilter
 
-class Encoder(nn.Module):
+class ModelWrapper(nn.Module):
+    '''
+    Instead of inheriting the Encoder class, wrap models with a class that can be used for training
+    '''
 
-    def __init__(self, input_dims,
-            NC=None,
-            cids=None,
-            modifiers=None,
-            *args, **kwargs):
+    def __init__(self,
+            model, # the model to be trained
+            loss=PoissonLoss_datafilter(), # the loss function to use
+            cids = None # which units to use during fitting
+            ):
         
         super().__init__()
 
         if cids is None:
-            self.cids = list(range(NC))
-        else:
-            self.cids = cids
-            NC = len(cids)
+            self.cids = model.cids
         
-        self.input_dims = input_dims
-        self.name = 'base'
-
-        self.loss = PoissonLoss_datafilter()
-        self.loss.unit_normalization = False
-
-        '''
-        MODIFIERS
-        '''
-        self.modify = False
-        
-
-        if modifiers is not None:
-
-            # initialize variables for modifier: these all need to be here regardless of whether the modifiers are used so we can load the model checkpoints
-            self.offsets = nn.ModuleList()
-            self.gains = nn.ModuleList()
-            self.offsetstims = []
-            self.gainstims = []
-            self.register_buffer("offval", torch.zeros(1))
-            self.register_buffer("gainval", torch.ones(1))
-
-            """
-            modifier is a hacky addition to the model to allow for offsets and gains at a certain stage in the model
-            The default stage is after the readout
-            example modifier input:
-            modifier = {'stimlist': ['frametent', 'saccadeonset'],
-            'gain': [40, None],
-            'offset':[40,20],
-            'stage': "readout",
-            'outdims: gd.NC}
-            """
-            if type(modifiers)==dict:
-                self.modify = True
-
-                nmods = len(modifiers['stimlist'])
-                assert nmods==len(modifiers["offset"]), "Encoder: modifier specified incorrectly"
-                
-                if 'stage' not in modifiers.keys():
-                    modifiers['stage'] = ["readout"]*nmods
-                
-                
-                self.modifierstage = []
-                for imod in range(nmods):
-                    if modifiers["offset"][imod] is not None:
-                        self.offsetstims.append(modifiers['stimlist'][imod])
-
-                        # set the output dims (this hast to match either the readout output the whole core is modulated)
-                        if modifiers['stage'][imod] =="readout":
-                            outdims = NC
-                        elif modifiers['stage'][imod] =="core":
-                            outdims = 1
-                        
-                        if 'outdims' in modifiers.keys():
-                            outdims = modifiers['outdims'][imod]
-                            
-                        self.modifierstage.append(modifiers["stage"][imod])
-
-                        self.offsets.append(
-                            layers.NDNLayer(input_dims=[1, 1, 1, modifiers["offset"][imod]],
-                            num_filters=outdims,
-                            bias=False,
-                            reg_vals = {'d2t': 1e-7})
-                        )
-                    if modifiers["gain"][imod] is not None:
-                        self.gainstims.append(modifiers['stimlist'][imod])
-                        
-                        self.gains.append(
-                            layers.NDNLayer(input_dims=[1,1, 1, modifiers["gain"][imod]],
-                            num_filters=outdims,
-                            bias=False,
-                            reg_vals = {'d2t': 1e-7})
-                        )
+        self.model = model
+        if hasattr(model, 'name'):
+            self.name = model.name
         else:
-            self.modify = False
+            self.name = 'unnamed'
 
-        self.register_buffer('reg_placeholder', torch.zeros(1,2))
-        self.var_pen = 0
-        self.output_NL = nn.Softplus()
+        self.loss = loss
+
     
     def compute_reg_loss(self):
-        rloss = 0
-        for layer in self.core:
-            rloss += layer.compute_reg_loss()
         
-        if hasattr(self, 'readout'):
-            if hasattr(self.readout, '__iter__'):
-                for layer in self.readout:
-                    rloss += layer.compute_reg_loss()
-            else:
-                rloss += self.readout.compute_reg_loss()
-        
-        if hasattr(self, 'offsets'):
-            for layer in self.offsets:
-                rloss += layer.compute_reg_loss()
-        
-        if hasattr(self, 'gains'):
-            for layer in self.gains:
-                rloss += layer.compute_reg_loss()
-            
-        return rloss
-
-    def prepare_fit(self, train_dl):
-
-        if self.loss.unit_normalization:
-            
-            r0 = 0
-            dfs = 0
-            for data in train_dl:
-                r0 += data['robs'][:,self.cids].sum(0)
-                dfs += data['dfs'][:,self.cids].sum(0)
-            
-            self.loss.set_unit_normalization(r0/dfs)
-
+        return self.model.compute_reg_loss()
 
     def prepare_regularization(self, normalize_reg = False):
         
-        for layer in self.core:
-            layer.reg.normalize = normalize_reg
-            layer.reg.build_reg_modules()
-
-        if hasattr(self, 'readout'):
-            if hasattr(self.readout, '__iter__'):
-                for layer in self.readout:
-                    layer.reg.normalize = normalize_reg
-                    layer.reg.build_reg_modules()
-            else:
-                self.readout.reg.normalize = normalize_reg
-                self.readout.reg.build_reg_modules()
-        
-        if hasattr(self, 'offsets'):
-            for layer in self.offsets:
-                layer.reg.normalize = normalize_reg
-                layer.reg.build_reg_modules()
-        
-        if hasattr(self, 'gains'):
-            for layer in self.gains:
-                layer.reg.normalize = normalize_reg
-                layer.reg.build_reg_modules()
+        self.model.prepare_regularization(normalize_reg=normalize_reg)
     
+    def forward(self, batch):
+
+        return self.model(batch)
 
     def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
         
         y = batch['robs'][:,self.cids]
-        dfs = batch['dfs'][:,self.cids]
-
         y_hat = self(batch)
 
-        loss = self.loss(y_hat, y, dfs)
+        if 'dfs' in batch.keys():
+            dfs = batch['dfs'][:,self.cids]
+            loss = self.loss(y_hat, y, dfs)
+        else:
+            loss = self.loss(y_hat, y)
 
         regularizers = self.compute_reg_loss()
-
-        regularizers = regularizers - self.var_pen*torch.sigmoid(y_hat.var(dim=0).sum())
 
         return {'loss': loss + regularizers, 'train_loss': loss, 'reg_loss': regularizers}
 
     def validation_step(self, batch, batch_idx=None):
         
         y = batch['robs'][:,self.cids]
-        dfs = batch['dfs'][:,self.cids]
-
+        
         y_hat = self(batch)
 
-        loss = self.loss(y_hat, y, dfs)
-        
+        if 'dfs' in batch.keys():
+            dfs = batch['dfs'][:,self.cids]
+            loss = self.loss(y_hat, y, dfs)
+        else:
+            loss = self.loss(y_hat, y)
+
         return {'loss': loss, 'val_loss': loss, 'reg_loss': None}
+    
+
+'''
+We use Fold2d to take the raw stimulus dimensions [Batch x Channels x Height x Width x Lags]
+and "fold" the lags into the channel dimension so we can do 2D convolutions on time-embedded stimuli
+'''
+class Fold2d(nn.Module):
+    __doc__ = r"""Folds the lags dimension of a 4D tensor into the channel dimension so that 2D convolutions can be applied to the spatial dimensions.
+    In the simplest case, the output value of the layer with input size
+    :math:`(N, C, H, W, T)` is :math:`(N, C\timesT, H, W)`
+    
+    the method unfold will take folded input of size :math:`(N, C\timesT, H, W)` and output the original dimensions :math:`(N, C, H, W, T)`
+    """
+
+    def __init__(self, dims=None):
+
+        self.orig_dims = dims
+        super(Fold2d, self).__init__()
+        
+        self.permute_order = (0,1,4,2,3)
+        self.new_dims = [dims[3]*dims[0], dims[1], dims[2]]
+        self.unfold_dims = [dims[0], dims[3], dims[1], dims[2]]
+        self.unfold_permute = (0, 1, 3, 4, 2)
+    
+    def forward(self, input):
+
+        return self.fold(input)
+    
+    def fold(self, input):
+        return input.permute(self.permute_order).view([-1] + self.new_dims)
+
+    def unfold(self, input):
+        return input.reshape([-1] + self.unfold_dims).permute(self.unfold_permute)

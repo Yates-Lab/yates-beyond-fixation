@@ -196,7 +196,8 @@ else:
 
 
 #%% Instantiate shifter model
-from models.shifters import ShifterModel
+from models.shifters import Shifter
+from models.cnns import CNNdense
 from models.utils import eval_model
 from NDNT.training import Trainer, EarlyStopping
 from NDNT.utils import load_model
