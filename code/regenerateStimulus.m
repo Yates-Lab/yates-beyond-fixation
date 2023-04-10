@@ -527,7 +527,16 @@ for iTrial = 1:nTrials
                 
             else
                 imrect = [tmprect(1:2) (tmprect(3)-tmprect(1))-1 (tmprect(4)-tmprect(2))-1];
-                I = imcrop(Im, imrect); % requires the imaging processing toolbox
+%                 imrect = round(tmprect);
+                
+                eyeOnScreen = eyeX > dims(2) & eyeX < Exp.S.screenRect(3)-dims(2);
+                eyeOnScreen = eyeOnScreen & eyeY > dims(1) & eyeY < Exp.S.screenRect(4) - dims(1);
+                
+                I = zeros(dims-1);
+                if eyeOnScreen
+                    I = imcrop(Im, imrect); % requires the imaging processing toolbox
+                end
+
                 I = I(1:spatialBinSize:end,1:spatialBinSize:end);
                 
                 if ip.Results.debug
@@ -537,7 +546,7 @@ for iTrial = 1:nTrials
                     plot([imrect(1) imrect(1) + imrect(3)], imrect(2)+imrect([4 4]), 'r')
                     plot(imrect([1 1]),[imrect(2), imrect(2) + imrect(4)], 'r')
                     plot(imrect(1)+imrect([3 3]), [imrect(2), imrect(2) + imrect(4)], 'r')
-                    subplot(5,5,5)
+%                     subplot(5,5,5)
                     imagesc(I)
                     drawnow
                 end
@@ -630,6 +639,9 @@ for iTrial = 1:nTrials
         if useh5
             X = zeros([1 size(I)], 'int8');
             X(1,:,:) = int8(I);
+            if isempty(X)
+                keyboard
+            end
             % save stim
             h5write(h5fname, [h5path '/Stim'], X, [frameCounter, 1,1], size(X))
             
