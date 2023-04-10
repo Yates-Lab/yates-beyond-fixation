@@ -39,10 +39,11 @@ NUM_WORKERS = int(os.cpu_count() / 2)
 from datasets.pixel import Pixel
 from models.utils import plot_stas
 
-sesslist = ['20191119', '20191121', '20191205', '20191206',  '20191231', '20200304', '20220601', '20220610']
-sessname = sesslist[7]
-datadir = '/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'
-
+from datasets.pixel.utils import get_stim_list
+sesslist = list(get_stim_list().keys())
+sessname = sesslist[19]
+# datadir = '/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'
+datadir = '/Users/jake/Dropbox/Datasets/Mitchell/stim_movies/'
 NBname = 'shifter_{}'.format(sessname)
 dirname = os.path.join('.', 'checkpoints', NBname)
 print(dirname)
@@ -50,15 +51,15 @@ print(dirname)
 valid_eye_rad = 9.2
 ds = Pixel(datadir,
     sess_list=[sessname],
-    requested_stims=['Gabor'],
+    requested_stims=['Dots', 'Gabor'],
     num_lags=12,
     downsample_t=2,
     download=True,
     valid_eye_rad=valid_eye_rad,
     ctr=np.array([0,0]),
-    fixations_only=True,
+    fixations_only=False,
     load_shifters=False,
-    spike_sorting='kilo',
+    spike_sorting='kilowf',
     covariate_requests={
         'fixation_onset': {'tent_ctrs': np.arange(-5, 40, 3)},
         'frame_tent': {'ntents': 20}}
@@ -70,15 +71,41 @@ print("Done")
 from copy import deepcopy
 dims_orig = deepcopy(ds.dims)
 
+#%%
+%matplotlib ipympl
+batch_size = 1000
+
+from torch.utils.data import DataLoader
+dloader = DataLoader(ds, batch_size=batch_size, shuffle=True)
+
+diter = iter(dloader)
+
+#%%
+%matplotlib inline
+data = next(diter)
+
+plt.plot(torch.diff(data['frame_times'], dim=0).numpy().flatten(), '.')
+plt.ylim([0, 1/60])
+
+plt.figure()
+plt.subplot(3,1,1)
+plt.plot(data['frame_times'], data['eyepos'], '.')
+
+i,j = np.where(data['robs'].numpy())
+plt.subplot(2,1,2)
+plt.plot(data['frame_times'][i], j, '|')
+
+#%%
+
 
 #%% get STA on the Gabor stimulus
 gab_inds = np.where(np.in1d(ds.valid_idx, ds.stim_indices[ds.sess_list[0]]['Gabor']['inds']))[0].tolist()
 
-# stas0 = ds.get_stas(inds=gab_inds, square=False)
-# stas = ds.get_stas(inds=gab_inds, square=True)
+stas0 = ds.get_stas(inds=gab_inds, square=False)
+stas = ds.get_stas(inds=gab_inds, square=True)
 
-stas0 = ds.get_stas(square=False)
-stas = ds.get_stas(square=True)
+# stas0 = ds.get_stas(square=False)
+# stas = ds.get_stas(square=True)
 
 #%%
 FracDF_include = .2
@@ -198,14 +225,13 @@ else:
 
 
 #%% Instantiate shifter model
-from models.shifters import Shifter
-from models.cnns import CNNdense
+from models.shifters import ShifterModel
 from models.utils import eval_model
 from NDNT.training import Trainer, EarlyStopping
-from NDNT.utils import load_model
+from NDNT.utils import NDNutils, load_model
 
 input_dims = [1, win_size, win_size] + [ds.num_lags]
-num_filters = [16, 16, 16]
+num_filters = [6, 6, 5]
 filter_width = [7, 5, 3]
 
 data = next(iter(train_dl))
@@ -214,16 +240,15 @@ lambdas = [1e-4, 1e-3, 1e-2]
 for irun in range(5):
     d2x = np.random.randint(len(lambdas))
     d2t = np.random.randint(len(lambdas))
-    # center = np.random.randint(len(lambdas))
+    center = np.random.randint(len(lambdas))
     
     cr0 = ShifterModel(input_dims, NC=ds.NC,
         num_subunits=num_filters,
         filter_width=filter_width,
         cids=cids,
-        scaffold=[2],
         drifter=False,
         noise_sigma=0,
-        reg_vals={'d2x': d2x, 'd2t': d2t}, #, 'center': center
+        reg_vals={'d2x': d2x, 'd2t': d2t, 'center': center},
         reg_hidden=None,
         reg_readout={'l2':1e-6},
         modifiers = {'stimlist': ['frame_tent'],
@@ -255,7 +280,7 @@ for irun in range(5):
 
     earlystopping = EarlyStopping(patience=10, verbose=False)
 
-    trainer = Trainer(optimizer=optimizer,
+    trainer = Trainer(cr0, optimizer=optimizer,
         device = device,
         max_epochs=500,
         verbose=1,

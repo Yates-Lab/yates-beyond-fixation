@@ -96,25 +96,68 @@ disp("Done")
 
 %% Make a table to summarize number of units, success rate, 
 
-PAT = '(?<subject>\w+)_(?<date>\d{8})'; %(?<month>\d{2})(?<day>\d{2})_\.(?<ext>\w+)
+rffit_thresh = 0.4;
 spike_thresh = 200;
 nboot = 500;
-wfampthresh = 40;
+wfamp_thresh = 40;
+
+numsessions = numel(sesslist);
+
+NumUnitsTotal = nan(numsessions, 1);
+NumUnitsSpikesThreshDots = nan(numsessions, 1);
+NumUnitsSpikesThreshGrat = nan(numsessions, 1);
+WaveformThresh = nan(numsessions, 1);
+HasDotRF = nan(numsessions, 1);
+HasGratRF = nan(numsessions, 1);
+
+
+for isess = 1:numsessions
+
+
+    % session info
+    numSpikesDots = Srf{isess}.fine.numspikes;
+    numSpikesGrat = Sgt{isess}.numspikes;
+    durationDots = Srf{isess}.fine.nsamples;
+    durationGrat = Sgt{isess}.numsamples;
+    wfamp = arrayfun(@(x) max(x.waveform.waveform(:)) - min(x.waveform.waveform(:)), Wfs{isess});
+
+    HasGaussRFDots = arrayfun(@(y) y.r2rf > rffit_thresh, Srf{isess}.RFs);
+    HasParRFGrat = Sgt{isess}.r2rf > rffit_thresh;
+
+    LinR2Dots = Srf{isess}.fine.r2 > 0;
+    LinR2Grat = Sgt{isess}.sig;
+
+    NumUnitsTotal(isess) = numel(wfamp);
+    WaveformThresh(isess) = sum(wfamp > wfamp_thresh);
+    NumUnitsSpikesThreshDots(isess) = sum(numSpikesDots(:) > spike_thresh & wfamp(:) > wfamp_thresh);
+    NumUnitsSpikesThreshGrat(isess) = sum(numSpikesGrat(:) > spike_thresh & wfamp(:) > wfamp_thresh);
+    HasDotRF(isess) = sum(HasGaussRFDots(:) & LinR2Dots(:) & numSpikesDots(:) > spike_thresh & wfamp(:) > wfamp_thresh);
+    HasGratRF(isess) = sum(HasParRFGrat(:) & LinR2Grat(:) & numSpikesGrat(:) > spike_thresh & wfamp(:) > wfamp_thresh);
+
+end
+
+PAT = '(?<subject>\w+)_(?<date>\d{8})'; %(?<month>\d{2})(?<day>\d{2})_\.(?<ext>\w+)
 
 info = cellfun(@(x) regexp(x, PAT, 'names'), sesslist, 'uni', 1);
 subject = arrayfun(@(x) x.subject, info, 'uni', 0);
 date = arrayfun(@(x) datestr(datenum(x.date, 'yyyymmdd'), 'mm/dd/yyyy'), info, 'uni', 0);
-NumUnitsTotal = cellfun(@(x) numel(x.fine.r2), Srf);
-NumUnitsSpikesThresh = cellfun(@(x,y) sum(x.fine.numspikes>spike_thresh & y.numspikes > spike_thresh), Srf, Sgt);
 
-VisuallyDriven = cellfun(@(x) sum(arrayfun(@(y) y.BackImage.sig<.05, x)), Wfs);
-HasRF = cellfun(@(x) sum(arrayfun(@(y) y.r2rf > .4, x.RFs)), Srf);
-HasLinRF = cellfun(@(x) sum(arrayfun(@(y) y.r2 > 0, x.RFs)), Srf);
-HasGratRF = cellfun(@(x) sum(x.sig), Sgt);
 DurationGratings = cellfun(@(x) x.numsamples/x.frate, Sgt);
 DurationSpatialDots = cellfun(@(x) x.fine.nsamples/x.fine.frate, Srf);
-T = table(subject, date, NumUnitsTotal, NumUnitsSpikesThresh, VisuallyDriven, HasRF, HasLinRF, HasGratRF, DurationGratings, DurationSpatialDots);
 
+% add on totals
+subject = [subject; 'Totals'];
+date = [date; '00/00/2022'];
+NumUnitsTotal = [NumUnitsTotal; sum(NumUnitsTotal)];
+NumUnitsSpikesThreshDots = [NumUnitsSpikesThreshDots; sum(NumUnitsSpikesThreshDots)];
+NumUnitsSpikesThreshGrat = [NumUnitsSpikesThreshGrat; sum(NumUnitsSpikesThreshGrat)];
+WaveformThresh = [WaveformThresh; sum(WaveformThresh)];
+HasDotRF = [HasDotRF; sum(HasDotRF)];
+HasGratRF = [HasGratRF; sum(HasGratRF)];
+DurationGratings = [DurationGratings; sum(DurationGratings)];
+DurationSpatialDots = [DurationSpatialDots; sum(DurationSpatialDots)];
+
+T = table(subject, date, NumUnitsTotal, WaveformThresh, NumUnitsSpikesThreshDots, NumUnitsSpikesThreshGrat, HasDotRF, HasGratRF, DurationGratings, DurationSpatialDots);
 
 m = median(DurationGratings/60);
 mci = bootci(nboot, @median, DurationGratings/60);
@@ -132,7 +175,7 @@ fprintf(fid, txt);
 
 binsizes = cell2mat(cellfun(@(x) arrayfun(@(y) y.xax(2)-y.xax(1), x.RFs), Srf, 'uni', 0));
 md = mean(binsizes);
-bootci(nboot, @mean, binsizes)
+bootci(nboot, @mean, binsizes);
 
 %% Example units
 
@@ -261,12 +304,13 @@ for ex = 1:numel(Srf)
     
 
     if ~isfield(Srf{ex}, 'fine') || ~isfield(Sgt{ex}, 'rffit') || (numel(Sgt{ex}.rffit) ~= numel(Srf{ex}.fine.rffit))
+        fprintf('skipping session %d\n', ex)
         continue
     end
     
-    if sum(Srf{ex}.fine.sig)<2 && sum(Sgt{ex}.sig)<2
-        continue
-    end
+%     if sum(Srf{ex}.fine.sig)<2 && sum(Sgt{ex}.sig)<2
+%         continue
+%     end
         
     numspikesS = [numspikesS; Srf{ex}.coarse.numspikes(:)];
     numspikesG = [numspikesG; Sgt{ex}.numspikes(:)];
@@ -349,23 +393,23 @@ end
 oriPref(oriPref < 0) = 180 + oriPref(oriPref < 0);
 oriPref(oriPref > 180) = oriPref(oriPref > 180) - 180;
 
-wfamp = arrayfun(@(x) x.peakval - x.troughval, wf);
+wfamp = arrayfun(@(x) max(x.waveform(:))-min(x.waveform(:)), wf);
 isiV = arrayfun(@(x) x.isiV, wf);
 
-validwf = wfamp > wfampthresh;
+validwf = wfamp > wfamp_thresh;
 spikeixS = validwf & numspikesS > spike_thresh; % only include units (single and multi) with an amplitude > 40 microvolts
 spikeixG = validwf & numspikesG > spike_thresh; 
 
-fprintf(fid, '%d (Spatial) and %d (Grating) of %d/%d recorded units (Total) had > %d spikes and waveform amplitudes > %d microvolts\n', sum(spikeixS), sum(spikeixG), sum(validwf), numel(sigs), spike_thresh, wfampthresh);
+fprintf(fid, '%d (Spatial) and %d (Grating) of %d/%d recorded units (Total) had > %d spikes and waveform amplitudes > %d microvolts\n', sum(spikeixS), sum(spikeixG), sum(validwf), numel(sigs), spike_thresh, wfamp_thresh);
 
 
 
 %% Rosa comparison Eccentricity plot
 
 % get index
-validwf = wfamp > wfampthresh & numspikesS > spike_thresh; % only include units (single and multi) with an amplitude > 40 microvolts
+validwf = wfamp > wfamp_thresh & numspikesS > spike_thresh; % only include units (single and multi) with an amplitude > 40 microvolts
 
-six = r2 > 0.4 & validwf;
+six = r2 > rffit_thresh & validwf;
 
 fprintf(fid, '%d/%d (%2.2f%%) units selective for space\n', sum(six), sum(validwf), 100*sum(six)/sum(validwf));
 
@@ -457,19 +501,33 @@ t.TileSpacing = 'compact';
 nexttile
 
 
-h = histogram(wrapTo180(oriPref(gix)), 'binEdges', 0:20:180, 'FaceColor', .1*[1 1 1]); hold on
-text(105, .7*max(h.Values), sprintf('n=%d', sum(gix)))
+circdiff = @(x,y) angle(exp(1i*(x-y)/180*pi))/pi*180;
+
+bs = 10;
+bins = 0:bs:180;
+
+cnt = sum( abs(wrapTo180(oriPref(gix)) - bins) < bs/2 );
+cnt = cnt / sum(cnt);
+bar(bins, cnt, 'FaceColor', .1*[1 1 1], 'FaceAlpha', .5)
+
+% h = histogram(wrapTo180(oriPref(gix)), 'binEdges', 0:20:180, 'FaceColor', .1*[1 1 1]); hold on
+
+
+text(105, .7*max(cnt), sprintf('n=%d', sum(gix)))
 ylabel('Count')
-set(gca,'XTick', 0:45:180, 'YTick', 0:25:50)
-plot.offsetAxes(gca, true, 0)
+% set(gca,'XTick', 0:45:180, 'YTick', 0:25:50)
+set(gca,'XTick', 0:45:180, 'YTick', 0:.05:.1)
+ylim([0, .1])
+plot.offsetAxes(gca, true, 10)
 xlabel('Orientation Preference (deg)')
-ylabel('Count')
+ylabel('Proportion')
+
 
 ax = nexttile;
 plot(wrapTo180(oriPref(gix)), oriBw(gix), 'wo', 'MarkerFaceColor', [1 1 1]*.1, 'MarkerSize', 2); hold on
 obw = oriBw(gix);  % orientation bandwidth
 op = oriPref(gix); % orientation preference
-be = h.BinEdges;
+be = 0:20:180;
 be2 = be(2:end);
 be = be(1:end-1);
 obws = arrayfun(@(x,y) mean(obw(op>x & op<y)), be,be2);

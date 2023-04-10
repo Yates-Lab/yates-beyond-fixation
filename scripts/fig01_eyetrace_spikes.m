@@ -4,7 +4,7 @@ datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'preprocessed')
 flist = dir(fullfile(datadir, '*.mat'));
 
 %% Load Session
-sessnum = 61;
+sessnum = 1;
 Exp = load(fullfile(datadir, flist(sessnum).name));
 
 %% Plot example trial

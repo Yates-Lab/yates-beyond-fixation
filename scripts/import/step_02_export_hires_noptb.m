@@ -4,17 +4,18 @@
 datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'hires');
 outputdir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'stim_movies');
 sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
-
 flist = dir(fullfile(outputdir, '*.hdf5'));
 
 %% Loop over sessions and import (this will be super slow)
-for isess = 3
+sesslist = {'allen_20220610.mat'};
+
+for isess = 1
     processedFileName = sesslist{isess};
     fname = fullfile(datadir, processedFileName);
     sessname = strrep(processedFileName, '.mat', '');
 
     exportexists=sum(arrayfun(@(x) contains(x.name, sessname), flist))>0;
-    fprintf('%d) %d\n', isess, exportexists)
+    fprintf('%d) [%s] exported = %d\n', isess, sessname, exportexists)
 
     %     assert(sum(arrayfun(@(x) contains(x.name, sessname), flist))==0, 'export_hires: session already exists')
 
@@ -110,8 +111,9 @@ for isess = 3
 
     %% Do high-res reconstruction using PTB (has to replay the whole experiment)
     Exp.FileTag = processedFileName;
-
-    fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true);
+    S.spikeSorting = 'kilowf';
+%     {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim'}
+    fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Gabor', 'BackImage'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false);
 
 end
 
@@ -131,7 +133,7 @@ fprintf('%s\n', fname)
 
 %% test that it worked
 id = 1;
-stim = 'FixFlashGabor';
+stim = 'Gabor';
 tset = 'Train';
 
 sz = h5readatt(fname, ['/' stim '/' tset '/Stim'], 'size');
@@ -165,6 +167,7 @@ frate = h5readatt(fname, ['/' stim '/' tset '/Stim'], 'frate');
 st = h5read(fname, ['/Neurons/' spike_sorting '/times']);
 clu = h5read(fname, ['/Neurons/' spike_sorting '/cluster']);
 cids = h5read(fname, ['/Neurons/' spike_sorting '/cids']);
+sp = struct();
 sp.st = st;
 sp.clu = clu;
 sp.cids = cids;
@@ -175,6 +178,7 @@ eyeAtFrame = h5read(fname, ['/' stim '/' tset '/eyeAtFrame']);
 labels = h5read(fname, ['/' stim '/' tset '/labels']);
 NX = size(Stim,2);
 NY = size(Stim,3);
+NC = size(Robs,2);
 %%
 
 Stim = reshape(Stim, size(Stim, 1), NX*NY);
@@ -182,53 +186,218 @@ Stim = reshape(Stim, size(Stim, 1), NX*NY);
 % reshape(Stim, 
 Stim = zscore(single(Stim));
 
-%% forward correlation
+%% Pick a lag and compute the STA quickly for all cells 
+lag = 8;
+ecc = hypot(eyeAtFrame(:,2)-Exp.S.centerPix(1), eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
+ix = ecc < 5.2 & labels == 1;
+Rdelta = Robs - mean(Robs);
+Rdelta = Rdelta(ix,:);
+sta = (Stim(find(ix)-lag,:).^2)'*Rdelta;
+[~, ind] = sort(std(sta));
+
+sx = ceil(sqrt(NC));
+sy = round(sqrt(NC));
+figure(10); clf
+for cc = 1:NC
+    subplot(sx, sy, cc, 'align')
+    imagesc(reshape(sta(:,ind(cc)), [NX NY]))
+    axis off
+end
+
+figure(11); clf
+plot(std(sta(:,ind)), '-o')
+cids = find(std(sta) > 500); 
+
+%%
+xax = -5:.5:5;
+
+eyeX = (eyeAtFrame(:,2)-Exp.S.centerPix(1))/Exp.S.pixPerDeg;
+eyeY = (eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
+
+R = Robs(:,cids);
+Rbar = mean(R);
+
+n = numel(xax);
+win = 1.5;
+
+figure(10); clf
+ctrs = nan(n, n, 2);
+threshs = nan(n, n);
+
+axs = plot.tight_subplot(n, n, .01, .01);
+
+for ii = 1:n
+    for jj = 1:n
+        
+        ix = (hypot(eyeX - xax(ii), eyeY - xax(jj)) < win) & labels == 1;
+        fprintf('x: %.2f, y: %0.2f, %d samples\n', xax(ii), xax(jj), sum(ix))
+        if sum(ix) < 200
+            continue
+        end
+        
+        ix = find(ix);
+        ix = ix(ix > lag);
+        Rdelta = R(ix,:) - Rbar;
+        sta = (Stim(ix-lag,:).^2)'*Rdelta;
+
+%         subplot(n, n, (ii-1)*n + jj)
+        set(gcf, 'currentaxes', axs((jj-1)*n + ii))
+        I = reshape(mean(sta,2), [NX, NY]);
+        I = imgaussfilt(I,2);
+        I = (I - min(I(:))) / (max(I(:))- min(I(:)));
+        imagesc(I); colormap gray
+        axis off
+        hold on
+        [con, ar, ctr, thresh] = get_rf_contour(1:NX, 1:NY, I);
+
+        if isnan(ctr(1))
+            continue
+        end
+        ctrs(jj,ii,:) = ctr;
+        
+        plot(con(:,1), con(:,2), 'r', 'Linewidth', 2)
+        threshs(jj,ii) = thresh;
+
+        axis off
+        drawnow
+    end
+
+end
+
+%% plot map of errors
+figure(11); clf
+subplot(1,2,1)
+imagesc(ctrs(:,:,1).*(threshs<.8))
+subplot(1,2,2)
+imagesc(ctrs(:,:,2).*(threshs<.8))
+
+%%
+
+[xx, yy] = meshgrid(xax);
+
+figure(1); clf;
+[i,j] = find(xx==0 & yy==0);
+cx = ctrs(i, j, 1);
+cy = ctrs(i, j, 2);
+
+imagesc()
+mask = (threshs<.8);
+errX = ctrs(:,:,1).*mask-cx;
+errY = ctrs(:,:,2).*mask-cy;
+
+plot3(xx(:), yy(:), errX(:), '.'); hold on
+
+% fit a plane
+fun = @(theta, x) (x - [theta(1) theta(2)])*[theta(3); theta(4)];
+
+theta0 = [0 0 .5 .5];
+thHatX = lsqcurvefit(fun, theta0, [xx(mask) yy(mask)], errX(mask));
+thHatY = lsqcurvefit(fun, theta0, [xx(mask) yy(mask)], errY(mask));
+
+xHat = fun(thHatX, [xx(:) yy(:)]);
+yHat = fun(thHatY, [xx(:) yy(:)]);
+
+plot3(xx(:), yy(:), xHat(:), '.')
+
+for i = find(mask)'
+    plot3([xx(i) xx(i)], [yy(i) yy(i)], [errX(i) xHat(i)], 'k-'); hold on
+end
+
+figure(2); clf,
+subplot(1,2,1)
+imagesc(errX, [-20 20])
+subplot(1,2,2)
+imagesc(reshape(xHat, [n n]), [-20 20])
+
+figure(3); clf,
+subplot(1,2,1)
+imagesc(errY, [-20 20])
+subplot(1,2,2)
+imagesc(reshape(yHat, [n n]), [-20 20])
+
+%%
+[xx,yy] = meshgrid(1:NX, 1:NY);
+
+NT = size(Stim, 1);
+X = reshape(Stim, [NT, NX, NY]);
+shiftX = fun(thHatX, [eyeX, eyeY]);
+shiftY = fun(thHatY, [eyeX, eyeY]);
+V = zeros(size(X));
+
+for i = 1:NT
+    V(i,:,:) = interp2(squeeze(X(i,:,:)), shiftX(i)+xx, shiftY(i)+yy, 'nearest', 0);
+end
+disp("Done")
+
+%% shift
+lag = 8;
+ecc = hypot(eyeAtFrame(:,2)-Exp.S.centerPix(1), eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
+ix = ecc < 5.2 & labels == 1;
+Rdelta = Robs - mean(Robs);
+Rdelta = Rdelta(ix,:);
+X = reshape(V, size(Stim));
+X(isnan(X))=0;
+sta = (X(find(ix)-lag,:))'*Rdelta;
+[~, ind] = sort(std(sta));
+
+sx = ceil(sqrt(NC));
+sy = round(sqrt(NC));
+figure(12); clf
+for cc = 1:NC
+    subplot(sx, sy, cc, 'align')
+    imagesc(reshape(sta(:,ind(cc)), [NX NY]))
+    axis off
+end
+
+%% no shift
+
+lag = 8;
+ecc = hypot(eyeAtFrame(:,2)-Exp.S.centerPix(1), eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
+ix = ecc < 5.2 & labels == 1;
+Rdelta = Robs - mean(Robs);
+Rdelta = Rdelta(ix,:);
+X = reshape(Stim, size(Stim));
+X(isnan(X))=0;
+sta = (X(find(ix)-lag,:))'*Rdelta;
+[~, ind] = sort(std(sta));
+
+sx = ceil(sqrt(NC));
+sy = round(sqrt(NC));
+figure(13); clf
+for cc = 1:NC
+    subplot(sx, sy, cc, 'align')
+    imagesc(reshape(sta(:,ind(cc)), [NX NY]))
+    axis off
+end
+
+%%
+figure(1); clf
+subplot(1,2,1)
+imagesc(squeeze(X(i,:,:)))
+subplot(1,2,2)
+imagesc(squeeze(V(i,:,:)))
+
+%% Get spatiotemporal RFs
 NC = size(Robs,2);
 nlags = 20;
 Rdelta = Robs - mean(Robs);
 nstim = size(Stim,2);
 ecc = hypot(eyeAtFrame(:,2)-Exp.S.centerPix(1), eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
 ix = ecc < 5.2 & labels == 1;
+R = Robs;
+Rbar = mean(R);
 
 stas = zeros(nlags, nstim, NC);
-for idim = 1:nstim
-    fprintf('%d/%d\n', idim, nstim)
-    Xstim = conv2(Stim(:,idim), eye(nlags), 'full');
-    Xstim = Xstim(1:end-nlags+1,:);
-    stas(:, idim, :) = Xstim(ix,:)'*Rdelta(ix,:);
+for lag = 1:nlags
+    fprintf('%d/%d lags\n', lag, nlags)
+    ix = ecc < 5.2 & labels == 1;
+    ix = find(ix);
+    ix = ix(ix > lag);
+    Rdelta = R(ix,:) - Rbar;
+    stas(lag, :, :) = (V(ix-lag,:))'*Rdelta;
 end
 
-% %%
-% % only take central eye positions
-% ecc = hypot(eyeAtFrame(:,2)-Exp.S.centerPix(1), eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
-% ix = ecc > 5.1 | labels ~= 1;
-% 
-% NC = size(Robs,2);
-% nlags = 10;
-% NT = size(Stim,1);
-% sx = ceil(sqrt(NC));
-% sy = round(sqrt(NC));
-% 
-% figure(1); clf
-% stas = zeros(nlags, size(Stim,2), NC);
-% 
-% for cc = 1:NC
-%     if sum(Robs(:,cc))==0
-%         continue
-%     end
-%     rtmp = Robs(:,cc);
-%     rtmp(ix) = 0; % remove spikes we don't want to analyze
-%     rtmp = rtmp - mean(rtmp);
-%     sta = simpleRevcorr(Stim, rtmp, nlags);
-%     subplot(sx, sy, cc, 'align')
-%     plot(sta)
-%     stas(:,:,cc) = sta;
-%     drawnow
-% end
-% 
-% %%
-% % clearvars -except Exp Stim Robs
-    %%
+%% 
 cc = 0;
 
 %% plot one by one
@@ -239,21 +408,28 @@ if cc > NC
 end
 
 sta = stas(:,:,cc);
-% NY = size(Stim,2)/NX;
-% sta = (sta - min(sta(:))) ./ (max(sta(:)) - min(sta(:)));
+% zscore the sta
 sta = (sta - mean(sta(:))) ./ std(sta(:));
+
+clim = max(abs(sta(:)));
 % x = xax(1:opts.s_downsample:end)/Exp.S.pixPerDeg*60;
 % y = yax(1:opts.s_downsample:end)/Exp.S.pixPerDeg*60;
-% xax = (1:NX)/Exp.S.pixPerDeg*60;
-% yax = (1:NY)/Exp.S.pixPerDeg*60;
+xax = (1:NX)/Exp.S.pixPerDeg*60;
+yax = (1:NY)/Exp.S.pixPerDeg*60;
 for ilag = 1:nlags
    subplot(2,ceil(nlags/2), ilag, 'align')
-   imagesc(reshape(sta(ilag,:), [NX NY])', [-1 1]*4)
+   imagesc(xax, yax, reshape(sta(ilag,:), [NX NY])', [-1 1]*clim)
 end
 
 % colormap(plot.viridis)
 colormap(gray)
 title(cc)
+
+
+%%
+
+figure(1); clf
+imagesc(reshape(mean(squeeze(std(stas,[], 1)),2), [80, 80]))
 
 
 %%

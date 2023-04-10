@@ -1,6 +1,6 @@
 figDir = 'figures/supplemental';
 
-fid = fopen(fullfile(figDir, 'summary.txt'), 'w'); % print to command window
+fid = fopen(fullfile(figDir, 'summary2.txt'), 'w'); % print to command window
 
 clear S;
 addpath scripts/
@@ -223,7 +223,7 @@ monkeys = {'E', 'L', 'M', 'A'};
 rng(555)
 for m = 1:4
     ix = arrayfun(@(x) strcmpi(x.exname(1), monkeys{m}), S(good));
-    n = sum(ix);
+    n = sum(ix);disp(n)
     x = nFixationSamples(ix) ./ nTotalSamples(ix) * 60;
     fprintf(fid, 'Monkey %s median fixation: %02.2f, [%02.2f, %02.2f]\n', monkeys{m}, median(x), prctile(x, 2.5), prctile(x, 97.5));
     jitter = randn(n,1);

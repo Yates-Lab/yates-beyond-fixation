@@ -1,109 +1,46 @@
-Grating stimulus was run for 661.88 [639.63, 1022.30] seconds
-Minimum duration was 580.00 seconds
+Grating stimulus was run for 11.24 [10.66, 17.86] seconds
+Minimum duration was 9.67 seconds
 
-Spatial mapping stimulus was run for 143.43 [122.04, 499.84] seconds
-Minimum duration was 47.87 seconds
+Spatial mapping stimulus was run for 2.50 [2.15, 9.37] minutes
+Minimum duration was 0.80 minutes
 
-     <strong>subject</strong>          <strong>date</strong>         <strong>NumUnitsTotal</strong>    <strong>NumUnitsSpikesThresh</strong>    <strong>VisuallyDriven</strong>    <strong>HasRF</strong>    <strong>DurationGratings</strong>    <strong>DurationSpatialDots</strong>
-    <strong>_________</strong>    <strong>______________</strong>    <strong>_____________</strong>    <strong>____________________</strong>    <strong>______________</strong>    <strong>_____</strong>    <strong>________________</strong>    <strong>___________________</strong>
+     <strong>subject</strong>           <strong>date</strong>         <strong>NumUnitsTotal</strong>    <strong>WaveformThresh</strong>    <strong>NumUnitsSpikesThreshDots</strong>    <strong>NumUnitsSpikesThreshGrat</strong>    <strong>HasDotRF</strong>    <strong>HasGratRF</strong>    <strong>DurationGratings</strong>    <strong>DurationSpatialDots</strong>
+    <strong>__________</strong>    <strong>______________</strong>    <strong>_____________</strong>    <strong>______________</strong>    <strong>________________________</strong>    <strong>________________________</strong>    <strong>________</strong>    <strong>_________</strong>    <strong>________________</strong>    <strong>___________________</strong>
 
-    {'allen'}    {'06/01/2022'}         123                  64                  110           50           639.61               149.82       
-    {'ellie'}    {'07/25/2017'}          17                  15                   11           14           1071.8                562.3       
-    {'ellie'}    {'07/26/2017'}           4                   3                    2            4           1422.6               632.36       
-    {'ellie'}    {'07/28/2017'}          10                  10                    8            5           972.85               402.35       
-    {'ellie'}    {'07/31/2017'}          34                  26                   29           16           979.95               169.24       
-    {'ellie'}    {'12/24/2018'}          12                  12                    9           11           1490.5               914.34       
-    {'ellie'}    {'01/07/2019'}          11                  11                   10            6           1361.5               906.06       
-    {'ellie'}    {'01/11/2019'}          12                  12                   11           11           964.42               1272.8       
-    {'logan'}    {'12/02/2019'}          49                  41                   36           36           646.66               133.73       
-    {'logan'}    {'12/10/2019'}          72                  47                   54           31           648.15               134.94       
-    {'logan'}    {'12/20/2019'}          53                  22                   36           31           635.27               115.27       
-    {'logan'}    {'12/23/2019'}          26                  24                   24           15           638.21               128.82       
-    {'logan'}    {'12/31/2019'}          58                  23                   51           33           649.64               47.867       
-    {'logan'}    {'03/03/2020'}          68                  30                   65           46           1279.3               100.11       
-    {'logan'}    {'03/04/2020'}          65                  56                   57           48           639.64               104.17       
-    {'logan'}    {'03/06/2020'}          74                  58                   70           52           639.62               78.342       
-    {'milo' }    {'06/07/2019'}          13                  12                   13            4           674.12               137.04       
-    {'milo' }    {'06/21/2019'}           9                   9                    7            9              580               499.84       
+    {'allen' }    {'06/01/2022'}         123               61                     41                          50                  22           43            639.61               149.82       
+    {'ellie' }    {'07/25/2017'}          17               17                     15                          17                  12           16            1071.8                562.3       
+    {'ellie' }    {'07/26/2017'}           4                4                      3                           4                   3            3            1422.6               632.36       
+    {'ellie' }    {'07/28/2017'}          10                9                      9                           9                   4            7            972.85               402.35       
+    {'ellie' }    {'07/31/2017'}          34               34                     26                          34                  10           30            979.95               169.24       
+    {'ellie' }    {'12/24/2018'}          12               12                     12                          12                  11           10            1490.5               914.34       
+    {'ellie' }    {'01/07/2019'}          11               10                     10                          10                   6            9            1361.5               906.06       
+    {'ellie' }    {'01/11/2019'}          12               12                     12                          12                  11           12            964.42               1272.8       
+    {'logan' }    {'12/02/2019'}          49               40                     36                          36                  26           32            646.66               133.73       
+    {'logan' }    {'12/10/2019'}          72               35                     25                          35                  11           31            648.15               134.94       
+    {'logan' }    {'12/20/2019'}          53               36                     18                          33                  11           25            635.27               115.27       
+    {'logan' }    {'12/23/2019'}          26               10                      9                           9                   5            6            638.21               128.82       
+    {'logan' }    {'12/31/2019'}          58               46                     19                          45                  10           43            649.64               47.867       
+    {'logan' }    {'03/03/2020'}          68               29                     11                          29                   5           27            1279.3               100.11       
+    {'logan' }    {'03/04/2020'}          65               37                     28                          37                  16           34            639.64               104.17       
+    {'logan' }    {'03/06/2020'}          74               36                     28                          35                  13           29            639.62               78.342       
+    {'milo'  }    {'06/07/2019'}          13               12                     11                          12                   4           12            674.12               137.04       
+    {'milo'  }    {'06/21/2019'}           9                9                      9                           9                   9            8               580               499.84       
+    {'Totals'}    {'00/00/2022'}         710              449                    322                         428                 189          377             15934               6489.4       
 
-264 (Spatial) and 353 (Grating) of 710 recorded units (Total) had > 200 spikes and waveform amplitudes > 40 microvolts
-138/264 (52.27%) units selective for space
+322 (Spatial) and 428 (Grating) of 449/710 recorded units (Total) had > 200 spikes and waveform amplitudes > 40 microvolts
+189/322 (58.70%) units selective for space
 Rosa Fit:
 A = 0.76
 B = 0.49
 C = 0.05
 OUR Fit:
-A = 0.68 [0.45, 0.92]
-B = 0.68 [0.26, 1.10]
-C = 0.00 [-0.16, 0.16]
-r-squared for fit 0.56 and rosa 0.45
-264 (Spatial) and 353 (Grating) of 710 recorded units (Total) had > 200 spikes and waveform amplitudes > 40 microvolts
-Grating stimulus was run for 661.88 [639.62, 979.95] seconds
-Minimum duration was 580.00 seconds
-
-Spatial mapping stimulus was run for 143.43 [125.10, 499.84] seconds
-Minimum duration was 47.87 seconds
-
-     <strong>subject</strong>          <strong>date</strong>         <strong>NumUnitsTotal</strong>    <strong>NumUnitsSpikesThresh</strong>    <strong>VisuallyDriven</strong>    <strong>HasRF</strong>    <strong>DurationGratings</strong>    <strong>DurationSpatialDots</strong>
-    <strong>_________</strong>    <strong>______________</strong>    <strong>_____________</strong>    <strong>____________________</strong>    <strong>______________</strong>    <strong>_____</strong>    <strong>________________</strong>    <strong>___________________</strong>
-
-    {'allen'}    {'06/01/2022'}         123                  64                  110           50           639.61               149.82       
-    {'ellie'}    {'07/25/2017'}          17                  15                   11           14           1071.8                562.3       
-    {'ellie'}    {'07/26/2017'}           4                   3                    2            4           1422.6               632.36       
-    {'ellie'}    {'07/28/2017'}          10                  10                    8            5           972.85               402.35       
-    {'ellie'}    {'07/31/2017'}          34                  26                   29           16           979.95               169.24       
-    {'ellie'}    {'12/24/2018'}          12                  12                    9           11           1490.5               914.34       
-    {'ellie'}    {'01/07/2019'}          11                  11                   10            6           1361.5               906.06       
-    {'ellie'}    {'01/11/2019'}          12                  12                   11           11           964.42               1272.8       
-    {'logan'}    {'12/02/2019'}          49                  41                   36           36           646.66               133.73       
-    {'logan'}    {'12/10/2019'}          72                  47                   54           31           648.15               134.94       
-    {'logan'}    {'12/20/2019'}          53                  22                   36           31           635.27               115.27       
-    {'logan'}    {'12/23/2019'}          26                  24                   24           15           638.21               128.82       
-    {'logan'}    {'12/31/2019'}          58                  23                   51           33           649.64               47.867       
-    {'logan'}    {'03/03/2020'}          68                  30                   65           46           1279.3               100.11       
-    {'logan'}    {'03/04/2020'}          65                  56                   57           48           639.64               104.17       
-    {'logan'}    {'03/06/2020'}          74                  58                   70           52           639.62               78.342       
-    {'milo' }    {'06/07/2019'}          13                  12                   13            4           674.12               137.04       
-    {'milo' }    {'06/21/2019'}           9                   9                    7            9              580               499.84       
-
-264 (Spatial) and 353 (Grating) of 710 recorded units (Total) had > 200 spikes and waveform amplitudes > 40 microvolts
-157/264 (59.47%) units selective for space
-Rosa Fit:
-A = 0.76
-B = 0.49
-C = 0.05
-OUR Fit:
-A = 0.68 [0.47, 0.90]
-B = 0.69 [0.33, 1.06]
-C = -0.00 [-0.14, 0.14]
-r-squared for fit 0.58 and rosa 0.46
-538/264 (203.79%) units selective for space
-Rosa Fit:
-A = 0.76
-B = 0.49
-C = 0.05
-OUR Fit:
-A = 0.89 [0.83, 0.96]
-B = 0.66 [0.51, 0.80]
-C = 0.02 [-0.05, 0.08]
-r-squared for fit 0.56 and rosa 0.55
-422/264 (159.85%) units selective for space
-Rosa Fit:
-A = 0.76
-B = 0.49
-C = 0.05
-OUR Fit:
-A = 0.70 [0.62, 0.78]
-B = 0.70 [0.53, 0.87]
-C = -0.00 [-0.07, 0.07]
-r-squared for fit 0.65 and rosa 0.57
-157/264 (59.47%) units selective for space
-Rosa Fit:
-A = 0.76
-B = 0.49
-C = 0.05
-OUR Fit:
-A = 0.68 [0.47, 0.90]
-B = 0.69 [0.33, 1.06]
-C = -0.00 [-0.14, 0.14]
-r-squared for fit 0.58 and rosa 0.46
+A = 0.59 [0.36, 0.81]
+B = 0.78 [0.39, 1.16]
+C = 0.00 [-0.14, 0.14]
+r-squared for fit 0.54 and rosa 0.25
+366/428 (85.51%) units selective for Gratings
+Orientation distribution is significantly different than uniform:
+Circ_otest pval: 1.020517e-78 (0.0000)
+Oblique median bandwidth: 29.812 [27.058, 33.199]
+Cardinal median bandwidth: 24.228 [22.943, 26.634]
+Two-sided rank sum test: p=8.967496e-05 (0.0000896750), ranksum=31612, zval=3.916954e+00

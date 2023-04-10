@@ -12,6 +12,7 @@ ip.addParameter('stimlist', {'Dots', 'Gabor', 'Grating', 'FixRsvpStim', 'BackIma
 ip.addParameter('overwrite', false)
 ip.addParameter('includeProbe', true)
 ip.addParameter('GazeContingent', true)
+ip.addParameter('usePTBdraw', true)
 ip.parse(varargin{:});
 stimlist = ip.Results.stimlist;
 overwrite = ip.Results.overwrite;
@@ -31,22 +32,19 @@ for istim = 1:numel(stimlist)
         'includeProbe', ip.Results.includeProbe, ...
         'correctEyePos', false, ...
         'nonlinearEyeCorrection', false, ...
-        'usePTBdraw', true, ...
+        'usePTBdraw', ip.Results.usePTBdraw, ...
         'GazeContingent', ip.Results.GazeContingent, ...
         'overwrite', overwrite};
     
+    % Test set
     options{find(strcmp(options, 'testmode')) + 1} = true;
     fname = io.dataGenerateHdf5(Exp, S, options{:});
-    
-    h5writeatt(fname, ['/' stimset '/Train/Stim'], 'frate', Exp.S.frameRate)
-    h5writeatt(fname, ['/' stimset '/Train/Stim'], 'center', Exp.S.centerPix)
-    h5writeatt(fname, ['/' stimset '/Train/Stim'], 'viewdist', Exp.S.screenDistance)
     
     h5writeatt(fname, ['/' stimset '/Test/Stim'], 'frate', Exp.S.frameRate)
     h5writeatt(fname, ['/' stimset '/Test/Stim'], 'center', Exp.S.centerPix)
     h5writeatt(fname, ['/' stimset '/Test/Stim'], 'viewdist', Exp.S.screenDistance)
     
-    
+    % Training/Validation set
     options{find(strcmp(options, 'testmode')) + 1} = false;
     fname = io.dataGenerateHdf5(Exp, S, options{:});
     
@@ -54,10 +52,6 @@ for istim = 1:numel(stimlist)
     h5writeatt(fname, ['/' stimset '/Train/Stim'], 'frate', Exp.S.frameRate)
     h5writeatt(fname, ['/' stimset '/Train/Stim'], 'center', Exp.S.centerPix)
     h5writeatt(fname, ['/' stimset '/Train/Stim'], 'viewdist', Exp.S.screenDistance)
-    
-    h5writeatt(fname, ['/' stimset '/Test/Stim'], 'frate', Exp.S.frameRate)
-    h5writeatt(fname, ['/' stimset '/Test/Stim'], 'center', Exp.S.centerPix)
-    h5writeatt(fname, ['/' stimset '/Test/Stim'], 'viewdist', Exp.S.screenDistance)
     
 end
 

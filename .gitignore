@@ -138,6 +138,5 @@ latest_checkpoint.txt
 *.png
 *.txt
 *.xlsx
-*.xls
 *.DS_Store
 *.gif
