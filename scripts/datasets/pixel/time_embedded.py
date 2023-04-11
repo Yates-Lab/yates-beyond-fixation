@@ -137,8 +137,8 @@ class Pixel(Dataset):
 
                     runninglength += sz[-1]
                     
-                    self.dims[1] = np.maximum(self.dims[1], sz[0])
-                    self.dims[2] = np.maximum(self.dims[1], sz[1])
+                    self.dims[1] = np.maximum(self.dims[1], sz[1])
+                    self.dims[2] = np.maximum(self.dims[1], sz[0])
         
         self.valid_idx = np.concatenate(self.valid_idx).astype(int)
         self.runninglength = runninglength
@@ -229,7 +229,7 @@ class Pixel(Dataset):
                     sz = fhandle[stim][self.stimset]['Stim'].shape
                     inds = self.stim_indices[expt][stim]['inds']
 
-                    self.covariates['stim'][0, :sz[0], :sz[1], inds] = np.transpose(fhandle[stim][self.stimset]['Stim'][...], [2,0,1])
+                    self.covariates['stim'][0, :sz[1], :sz[0], inds] = np.transpose(fhandle[stim][self.stimset]['Stim'][...], [2,1,0])
                     self.covariates['frame_times'][inds] = fhandle[stim][self.stimset]['frameTimesOe'][...].T
                     stimid = np.where(np.in1d(self.requested_stims, stim))[0][0]
                     self.covariates['stimid'][inds] = stimid

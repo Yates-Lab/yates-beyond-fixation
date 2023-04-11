@@ -67,3 +67,64 @@ def plot_stas(stas, show_zero=True, plot=True, thresh=None, title=None):
             plt.suptitle(title)
     
     return mu, blag.astype(int), fig
+
+def plot_layer(layer, ind=None):
+    
+    if layer.filter_dims[-1] > 1:
+        ws = layer.get_weights()
+        if ind is not None: 
+            ws = ws[..., ind]
+        ws = np.transpose(ws, (2,0,1,3))
+        layer.plot_filters()
+    else:
+        ws = layer.get_weights()
+        if ind is not None: 
+            ws = ws[..., ind]
+
+        nout = ws.shape[-1]
+        nin = ws.shape[0]
+        plt.figure(figsize=(10, 10))
+
+        for i in range(nin):
+            for j in range(nout):
+                plt.subplot(nin, nout, i*nout + j + 1)
+                plt.imshow(ws[i, :,:, j], aspect='auto', interpolation='none')
+                plt.axis("off")
+
+def plot_dense_readout(layer):
+    ws = layer.get_weights()
+    n = ws.shape[-1]
+    sx = int(np.ceil(np.sqrt(n)))
+    sy = int(np.ceil(np.sqrt(n)))
+    plt.figure(figsize=(sx*2, sy*2))
+    for cc in range(n):
+        plt.subplot(sx, sy, cc + 1)
+        v = np.max(np.abs(ws[:,:,cc]))
+        plt.imshow(ws[:,:,cc], interpolation='none', cmap=plt.cm.coolwarm, vmin=-v, vmax=v)
+
+def plot_model(model):
+
+    for layer in model.core:
+        plot_layer(layer)
+        plt.show()
+
+    if hasattr(model, 'offsets'):
+        for i,layer in enumerate(model.offsets):
+            _ = plt.plot(layer.get_weights())
+            plt.title("Offset {}".format(model.offsetstims[i]))
+            plt.show()
+    
+    if hasattr(model, 'gains'):
+        for i,layer in enumerate(model.gains):
+            _ = plt.plot(layer.get_weights())
+            plt.title("Gain {}".format(model.gainstims[i]))
+            plt.show()
+
+    if hasattr(model.readout, 'mu'):
+        plt.imshow(model.readout.get_weights())
+    else:
+        plot_dense_readout(model.readout.space)
+        plt.show()
+        plt.imshow(model.readout.feature.get_weights())
+        plt.xlabel("Neuron ID")
+        plt.ylabel("Feature ID")
