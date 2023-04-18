@@ -11,7 +11,7 @@ Exp = load(fullfile(datadir, flist(sessnum).name));
 
 validTrials = io.getValidTrials(Exp, 'BackImage');
 
-i = 1; % trial number
+i = i + 1; % trial number
 
 iTrial = validTrials(i);
 
@@ -25,6 +25,17 @@ eyet = ttime(iix) - tstart;
 eyex = sgolayfilt(Exp.vpx.smo(iix,2), 1, 19);
 eyey = sgolayfilt(Exp.vpx.smo(iix,3), 1, 19);
 labels = Exp.vpx.Labels(iix);
+
+figure(2); clf
+PATHTOIMAGES = fileparts(which('MarmoV5')); % right above
+Im = imread(fullfile(PATHTOIMAGES, Exp.D{iTrial}.PR.imagefile));
+Im = rgb2gray(Im);
+Im = imresize(Im, fliplr(Exp.D{iTrial}.PR.destRect(3:4)));
+imagesc(Im); hold on
+eyePixX = eyex * Exp.S.pixPerDeg + Exp.S.centerPix(1);
+eyePixY = Exp.S.centerPix(2) - eyey * Exp.S.pixPerDeg;
+plot(eyePixX, eyePixY, 'c.')
+
 
 figure(1); clf
 plot(eyet, eyex, 'k'); hold on
