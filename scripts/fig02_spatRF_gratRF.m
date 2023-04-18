@@ -182,6 +182,10 @@ bootci(nboot, @mean, binsizes);
 exs = {'logan_20191231.mat', 'ellie_20190111.mat'};
 ccs = [19, 9];
 
+% save for source data file
+timeAxis = {};
+firingRate = {};
+errorSD = {};
 
 for ii = 1:numel(exs)
     ex = find(strcmp(sesslist, exs{ii}));
@@ -255,6 +259,10 @@ for ii = 1:numel(exs)
     plot(Sgt{ex}.timeax(:), Sgt{ex}.temporalPref(:,cc), 'k')
     axis tight
 
+    timeAxis{ii} = Sgt{ex}.timeax(:);
+    firingRate{ii} = Sgt{ex}.temporalPref(:,cc);
+    errorSD{ii} = Sgt{ex}.temporalPrefSd(:,cc);
+
     xlabel('Time lag (ms)')
     ylabel('Firing Rate (sp s^{-1})')
     
@@ -268,6 +276,17 @@ for ii = 1:numel(exs)
     saveas(gcf, fullfile(figDir, sprintf('example_%s_%d.pdf', strrep(sesslist{ex}, '.mat', ''), cc)))
     
 end
+
+%% save source data file
+T = table(timeAxis', firingRate', errorSD', 'VariableNames', {'Time', 'Firing Rate', 'Standard Error'}, 'RowNames', {'Neuron 1', 'Neuron 2'});
+separator = ',';
+for fname = T.Properties.VariableNames
+    field = fname{1};
+    T.(field) = cellfun(@(v) strjoin(arrayfun(@num2str, v, 'UniformOutput', false), separator), T.(field), 'UniformOutput', false);
+end
+
+filename = 'Figure2.xlsx';
+writetable(T,filename,'Sheet',1, 'WriteRowNames', true, 'WriteVariableNames', true)
 
 %% Loop over SRF struct and get relevant statistics
 r2 = []; % r-squared from gaussian fit to RF

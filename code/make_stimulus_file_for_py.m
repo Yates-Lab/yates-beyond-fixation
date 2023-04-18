@@ -22,7 +22,7 @@ for istim = 1:numel(stimlist)
     stimset = stimlist{istim};
     validTrials = io.getValidTrials(Exp, stimset);
     if numel(validTrials) < 2
-        fprintf('make_stimulus_fil: No Trials. Skipping [%s]\n', stimset)
+        fprintf('make_stimulus_file: No Trials. Skipping [%s]\n', stimset)
         continue
     end
     options = {'stimulus', stimset, ...

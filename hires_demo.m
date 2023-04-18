@@ -3,7 +3,7 @@
 
 datadir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'hires');
 outputdir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'stim_movies');
-sesslist = arrayfun(@(x) x.name, dir(fullfile(datadir, '*.mat')), 'uni', 0);
+
 flist = dir(fullfile(outputdir, '*.hdf5'));
 
 %% Loop over sessions and import (this will be super slow)
@@ -178,6 +178,7 @@ eyeAtFrame = h5read(fname, ['/' stim '/' tset '/eyeAtFrame']);
 labels = h5read(fname, ['/' stim '/' tset '/labels']);
 NX = size(Stim,2);
 NY = size(Stim,3);
+NC = size(Robs,2);
 %%
 
 Stim = reshape(Stim, size(Stim, 1), NX*NY);
@@ -214,12 +215,13 @@ eyeX = (eyeAtFrame(:,2)-Exp.S.centerPix(1))/Exp.S.pixPerDeg;
 eyeY = (eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
 
 R = Robs(:,cids);
-Rbar = mean(Rbar);
+Rbar = mean(R);
 
 n = numel(xax);
 win = 1.5;
 
 figure(10); clf
+set(gcf, 'Color', 'w')
 ctrs = nan(n, n, 2);
 threshs = nan(n, n);
 
@@ -265,10 +267,17 @@ end
 
 %% plot map of errors
 figure(11); clf
+set(gcf, 'Color', 'w')
 subplot(1,2,1)
 imagesc(ctrs(:,:,1).*(threshs<.8))
+title('Horizontal RF center')
+xlabel('Gaze Position (d.v.a.)')
+ylabel('Gaze Position (d.v.a.)')
 subplot(1,2,2)
 imagesc(ctrs(:,:,2).*(threshs<.8))
+title('Vertical RF center')
+xlabel('Gaze Position (d.v.a.)')
+ylabel('Gaze Position (d.v.a.)')
 
 %%
 

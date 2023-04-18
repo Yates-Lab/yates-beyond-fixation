@@ -420,6 +420,10 @@ for iTrial = 1:nTrials
         % offset for center of the screen
         eyeX = Exp.S.centerPix(1) + eyeX;
         eyeY = Exp.S.centerPix(2) - eyeY;
+
+        % round to nearest pixel
+        eyeX = round(eyeX);
+        eyeY = round(eyeY);
         
         % skip frame if eye position is invalid
         if isnan(eyeX) || isnan(eyeY)
