@@ -14,7 +14,7 @@ After exporting a stimulus movie, the shifter model can be fit. The shifter mode
 A python notebook [shifter_example](https://github.com/VisNeuroLab/yates-beyond-fixation/blob/main/shifter_example.ipynb) demonstrates the steps for fitting a shifter model.
 
 ## getting the data
-An example dataset can be downloaded [here](https://doi.org/10.6084/m9.figshare.22580566!). Because we used matlab objects to generate the stimuli and reconstruct from seed, for the dataset to load properly, you will need the stimulus code from [here](https://github.com/jcbyts/MarmoV5) in your path. The supporting code that was used to preprocess the raw files can be found [here](https://github.com/jcbyts/MarmoPipe).
+An example dataset can be downloaded [here](https://doi.org/10.6084/m9.figshare.22580566). Because we used matlab objects to generate the stimuli and reconstruct from seed, for the dataset to load properly, you will need the stimulus code from [here](https://github.com/jcbyts/MarmoV5) in your path. The supporting code that was used to preprocess the raw files can be found [here](https://github.com/jcbyts/MarmoPipe).
 
 ## hires_demo.m
 In the manuscript, we used PsychToolbox to draw the stimulus. `hires_demo.m` turns that flag off and uses the equations to generate gabors or clips directly into natural images. This will produce tiny differences in pixel values that likely don't matter, but we did not explore this thoroughly.
