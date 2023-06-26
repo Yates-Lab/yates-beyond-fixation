@@ -23,6 +23,7 @@ binfun = [];
 [~, ~, ind2] = histcounts(sp.st, eventTimes+binSize);
 
 ix = ind1 ~= 0 & ind2 ~= 0;
+% ix = ix & (ind2-ind1 == mode(ind2-ind1));
 ix = ix & (ind2+1 == ind1);
 ix = ix & sp.clu > 0;
 Y = sparse(ind1(ix), double(sp.clu(ix)), ones(sum(ix), 1), numel(eventTimes), max(sp.clu));
