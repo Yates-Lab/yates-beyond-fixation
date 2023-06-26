@@ -121,6 +121,7 @@ Frames = []
 
 for f in range(N):
     Frames.append(to_image(M[:,:,:, :, f].squeeze()))
+    # Frames.append(to_image(M[:,:,:, :, f].squeeze()))
     # plt.imshow(M[:,:,:, :, f].squeeze().T, aspect='auto', interpolation='none')
     # plt.show()
 imageio.mimsave('FEMs.gif', Frames, fps=10)
