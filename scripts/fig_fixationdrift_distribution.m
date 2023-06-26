@@ -20,6 +20,7 @@ for i = 1:nSessions
     ddist = ddist + dtmp;
 end
 
+%%
 ddist = ddist ./ sum(ddist,2);
 ddist = imgaussfilt(ddist,1);
 ddist = log10(ddist);
@@ -38,4 +39,4 @@ xlabel('Arcminutes')
 ylabel('Fixation Time (ms)')
 
 plot.formatFig(gcf, [1 1], 'nature')
-saveas(gcf, 'Figures/2021_ucbtalk/driftdist.pdf')
+% saveas(gcf, 'Figures/2021_ucbtalk/driftdist.pdf')
