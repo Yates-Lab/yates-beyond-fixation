@@ -16,6 +16,8 @@ if ~exist('eyePos', 'var')
     eyePos = Exp.vpx.smo(:,2:3);
 end
 
+validIx = validIx & ~isnan(sum(eyePos,2));
+
 xy = eyePos(validIx,:);
 spd = Exp.vpx.smo(validIx,7);
 
@@ -25,8 +27,8 @@ ntargs = size(targets,1);
 
 n = sum(validIx);
 ix = true(n,1);
-ix = all(abs(zscore(xy(ix,:)))<1,2); % remove outliers
-ix = ix & ( spd / median(spd) < 2); % find fixations
+% ix = all(abs(zscore(xy(ix,:)))<1,2); % remove outliers
+ix = ix & ( spd / nanmedian(spd) < 5); % find fixations
 
 %% check original
 [~, id] = calibration_loss([1 1 0 0 0], xy(ix,:), targets);
