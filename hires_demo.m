@@ -7,8 +7,8 @@ outputdir = fullfile(getpref('FREEVIEWING', 'PROCESSED_DATA_DIR'), 'stim_movies'
 flist = dir(fullfile(outputdir, '*.hdf5'));
 
 %% Loop over sessions and import (this will be super slow)
-sesslist = {'allen_20220610.mat'};
-
+% sesslist = {'allen_20220610.mat'};
+sesslist = {'logan_20200304.mat'};
 for isess = 1
     processedFileName = sesslist{isess};
     fname = fullfile(datadir, processedFileName);
@@ -111,9 +111,9 @@ for isess = 1
 
     %% Do high-res reconstruction using PTB (has to replay the whole experiment)
     Exp.FileTag = processedFileName;
-    S.spikeSorting = 'kilowf';
+    S.spikeSorting = 'kilo';
 %     {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim'}
-    fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Gabor', 'BackImage'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false);
+    fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Gabor'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false);
 
 end
 
@@ -147,10 +147,7 @@ I = h5read(fname, ['/' stim '/' tset '/Stim'], [iFrame, 1,1], [1 sz(1:2)']);
 I = squeeze(I);
 % I = h5read(fname{1}, ['/' stim '/' set '/Stim'], [1,1,iFrame], [sz(1:2)' 1]);
 figure(id); clf
-subplot(1,2,1)
 imagesc(I)
-subplot(1,2,2)
-imagesc(I(1:2:end,1:2:end));% axis xy
 colorbar
 colormap gray
 drawnow
@@ -158,7 +155,7 @@ drawnow
 
 
 %% get STAs to check that you have the right rect
-spike_sorting = 'kilowf';
+spike_sorting = 'kilo';
 Stim = h5read(fname, ['/' stim '/' tset '/Stim']);
 % Robs = h5read(fname, ['/' stim '/' set '/Robs']);
 ftoe = h5read(fname, ['/' stim '/' tset '/frameTimesOe']);
@@ -189,7 +186,7 @@ Stim = zscore(single(Stim));
 %% Pick a lag and compute the STA quickly for all cells 
 lag = 8;
 ecc = hypot(eyeAtFrame(:,2)-Exp.S.centerPix(1), eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
-ix = ecc < 5.2 & labels == 1;
+ix = ecc < 5.2 & labels == 1 & (1:numel(ecc))'> lag;
 Rdelta = Robs - mean(Robs);
 Rdelta = Rdelta(ix,:);
 sta = (Stim(find(ix)-lag,:).^2)'*Rdelta;
@@ -280,6 +277,13 @@ xlabel('Gaze Position (d.v.a.)')
 ylabel('Gaze Position (d.v.a.)')
 
 %%
+figure(1); clf
+plot(linspace(-20, 20, 100), sind(linspace(-20, 20, 100)))
+
+
+imagesc( (ctrs(:,:,2).*(threshs<.8)) / ppd)
+
+%%
 
 [xx, yy] = meshgrid(xax);
 
@@ -293,18 +297,44 @@ mask = (threshs<.8);
 errX = ctrs(:,:,1).*mask-cx;
 errY = ctrs(:,:,2).*mask-cy;
 
+% errX = errX / ppd;
+% errY = errY / ppd;
+
 plot3(xx(:), yy(:), errX(:), '.'); hold on
 
 % fit a plane
 fun = @(theta, x) (x - [theta(1) theta(2)])*[theta(3); theta(4)];
-
 theta0 = [0 0 .5 .5];
+
+% fit Cornsweet and Crane 
+% fun = @(theta, x) sind( (x - [theta(1) theta(2)])*[theta(3); theta(4)])*theta(5);
+% theta0 = [0 0 1 1 1];
+% fun = @(theta, x) sind( (x - [theta(1) theta(2)] )*[theta(3); theta(4)];
+
+% fun = @(theta, x) sind(x)*[theta(1); theta(2)];
+% theta0 = [1 1];
+
+
 thHatX = lsqcurvefit(fun, theta0, [xx(mask) yy(mask)], errX(mask));
 thHatY = lsqcurvefit(fun, theta0, [xx(mask) yy(mask)], errY(mask));
 
 xHat = fun(thHatX, [xx(:) yy(:)]);
 yHat = fun(thHatY, [xx(:) yy(:)]);
 
+figure(1); clf
+subplot(1,2,1)
+plot(errX(mask), '-')
+hold on
+plot(xHat(mask), '.')
+
+
+
+subplot(1,2,2)
+plot(errY(mask))
+hold on
+plot(yHat(mask))
+
+%%
 plot3(xx(:), yy(:), xHat(:), '.')
 
 for i = find(mask)'

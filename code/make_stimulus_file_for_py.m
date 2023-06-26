@@ -1,6 +1,6 @@
 function fname = make_stimulus_file_for_py(Exp, S, varargin)
 % make_stimulus_file_for_py(Exp, S, varargin)
-eyesmoothing = 19;
+
 if isfield(S, 'spikeSorting')
     spike_sorting = S.spikeSorting;
 else
@@ -12,15 +12,24 @@ ip.addParameter('stimlist', {'Dots', 'Gabor', 'Grating', 'FixRsvpStim', 'BackIma
 ip.addParameter('overwrite', false)
 ip.addParameter('includeProbe', true)
 ip.addParameter('GazeContingent', true)
+ip.addParameter('EyeCorrection', [])
+ip.addParameter('EyeSmoothing', 41)
+ip.addParameter('EyeSmoothingOrder', 3)
 ip.addParameter('usePTBdraw', true)
+ip.addParameter('validTrials', [])
 ip.parse(varargin{:});
 stimlist = ip.Results.stimlist;
+eyesmoothing = ip.Results.EyeSmoothing;
 overwrite = ip.Results.overwrite;
 
 for istim = 1:numel(stimlist)
     
     stimset = stimlist{istim};
     validTrials = io.getValidTrials(Exp, stimset);
+    if ~isempty(ip.Results.validTrials)
+        validTrials = intersect(validTrials, ip.Results.validTrials);
+    end
+
     if numel(validTrials) < 2
         fprintf('make_stimulus_file: No Trials. Skipping [%s]\n', stimset)
         continue
@@ -29,11 +38,13 @@ for istim = 1:numel(stimlist)
         'debug', false, ...
         'testmode', true, ...
         'eyesmooth', eyesmoothing, ... % bins
+        'eyesmoothorder', ip.Results.EyeSmoothingOrder, ...
         'includeProbe', ip.Results.includeProbe, ...
-        'correctEyePos', false, ...
+        'correctEyePos', ip.Results.EyeCorrection, ...
         'nonlinearEyeCorrection', false, ...
         'usePTBdraw', ip.Results.usePTBdraw, ...
         'GazeContingent', ip.Results.GazeContingent, ...
+        'validTrials', validTrials, ...
         'overwrite', overwrite};
     
     % Test set

@@ -33,6 +33,7 @@ ip = inputParser();
 ip.addParameter('spatialBinSize', 1)
 ip.addParameter('GazeContingent', true)
 ip.addParameter('SaveVideo', [])
+ip.addParameter('Shifter', [])
 ip.addParameter('ExclusionRadius', 500)
 ip.addParameter('Latency', 0)
 ip.addParameter('EyePos', [])
@@ -40,16 +41,20 @@ ip.addParameter('includeProbe', true)
 ip.addParameter('debug', false)
 ip.addParameter('frameIndex', [])
 ip.addParameter('usePTBdraw', false)
+ip.addParameter('roundEye', false)
 ip.addParameter('h5file', [])
 ip.addParameter('h5path', [])
 ip.parse(varargin{:});
 
+
 spatialBinSize = ip.Results.spatialBinSize;
+roundEye = ip.Results.roundEye;
 seedcheckloopmax = 6;
 
 % get the dimensions of your image sequence
 dims = ((rect([4 3]) - rect([2 1]))/spatialBinSize);
-
+[gx, gy] = meshgrid(rect(1)+1:rect(3), rect(2)+1:rect(4));
+[Xscreen, Yscreen] = meshgrid(1:Exp.S.screenRect(3), 1:Exp.S.screenRect(4));
 % extract the total number of frames
 framesPerTrial = cellfun(@(x) sum(~isnan(x.eyeData(6:end,6))),Exp.D(validTrials));
 nTotalFrames = sum(framesPerTrial);
@@ -92,11 +97,11 @@ else
     Stim = zeros(dims(1), dims(2), nTotalFrames, 'single');
     
     frameInfo = struct('dims', dims, 'rect', rect, ...
-        'frameTimesPtb', zeros(nTotalFrames, 1), ...
-        'frameTimesOe', zeros(nTotalFrames, 1), ...
-        'eyeAtFrame', zeros(nTotalFrames, 6), ... % [eyeTime eyeX eyeY eyeIx eyeXonline eyeYonline]
+        'frameTimesPtb', nan(nTotalFrames, 1), ...
+        'frameTimesOe', nan(nTotalFrames, 1), ...
+        'eyeAtFrame', nan(nTotalFrames, 6), ... % [eyeTime eyeX eyeY eyeIx eyeXonline eyeYonline]
         'probeDistance', inf(nTotalFrames, 1), ...
-        'probeAtFrame', zeros(nTotalFrames, 3), ... % [X Y id]
+        'probeAtFrame', nan(nTotalFrames, 3), ... % [X Y id]
         'seedGood', true(nTotalFrames, 1));
 end
 
@@ -155,10 +160,34 @@ if ip.Results.usePTBdraw
 end
 
 %% loop over trials and regenerate stimuli
+
+% -- calculate shift (in pixels)
+if ~isempty(ip.Results.Shifter)
+    CorrectEyepos = true;
+
+    iix = ~isnan(hypot(eyePos(:,1), eyePos(:,2)));
+    shiftX = nan(numel(iix), 1);
+    shiftY = nan(numel(iix), 1);
+
+    shifter = ip.Results.Shifter;
+    disp('Correcting eye position with shifter')
+    shiftX(iix) = (shifter.hshift(eyePos(iix,1), -eyePos(iix,2)));
+    shiftY(iix) = (shifter.vshift(eyePos(iix,1), -eyePos(iix,2)));
+    disp('Done')
+    if roundEye
+        shiftX = round(shiftX);
+        shiftY = round(shiftY);
+    end
+
+else
+    CorrectEyepos = false;
+end
+
+
 nTrials = numel(validTrials);
 
-blocks = 1;
-
+blocks = [];
+blockStart = 1;
 frameCounter = 1;
 
 for iTrial = 1:nTrials
@@ -173,7 +202,6 @@ for iTrial = 1:nTrials
 
     nFrames = numel(frameRefreshes);
     
-
     frameRefreshesOe = Exp.ptb2Ephys(frameRefreshes(1:nFrames));
     
     % --- prepare for reconstruction based on stimulus protocol
@@ -280,8 +308,13 @@ for iTrial = 1:nTrials
             hObj.radius = round(Exp.D{thisTrial}.P.faceRadius*Exp.S.pixPerDeg);
             
             noiseFrames = Exp.D{thisTrial}.PR.NoiseHistory(:,1);
-            
-            nFrames = min(numel(noiseFrames), nFrames);
+            if isempty(noiseFrames)
+                continue
+            end
+            startFrame = find(min(noiseFrames)==frameRefreshes);
+            endFrame = numel(noiseFrames);
+
+%             nFrames = min(numel(noiseFrames), nFrames);
             probeX = nan(nFrames,1);
             probeY = nan(nFrames,1);
             probeId = nan(nFrames,1);
@@ -376,8 +409,7 @@ for iTrial = 1:nTrials
     else
         frameIndx = ip.Results.frameIndex(:)';
     end
-    
-    blockStart = frameCounter;
+
     
     % --- loop over frames and get noise from that frame
     for iFrame = frameIndx
@@ -388,31 +420,38 @@ for iTrial = 1:nTrials
         % eye position is invalid, skip frame
         if isempty(eyeIx)
             disp('Skipping because of eyeTime')
-            blocks = [blocks; frameCounter];
+            blocks = [blocks; [blockStart frameCounter-1]];
+            blockStart = frameCounter + 1;
+%             blocks = [blocks; frameCounter-1];
 %             if useh5
-%                 frameCounter = frameCounter + 1;
+%             frameCounter = frameCounter + 1;
 %             end
             continue
         end
         
         % eye position in pixels
+        eyeXon = eyePos(eyeIx,1);
+        eyeYon = eyePos(eyeIx,2);
+
         eyeX = eyePos(eyeIx,1) * Exp.S.pixPerDeg;
         eyeY = eyePos(eyeIx,2) * Exp.S.pixPerDeg;
         
         % online eye position
-        eyepos = Exp.D{thisTrial}.eyeData(iFrame,2:3);
+%         eyepos = Exp.D{thisTrial}.eyeData(iFrame,2:3);
    
-        eyeXon = (eyepos(1) - Exp.D{thisTrial}.c(1)) / (Exp.D{thisTrial}.dx);
-        eyeYon = (eyepos(2) - Exp.D{thisTrial}.c(2)) / (Exp.D{thisTrial}.dy);
-        eyeXon = Exp.S.centerPix(1) + eyeXon;
-        eyeYon = Exp.S.centerPix(2) - eyeYon;
+%         eyeXon = (eyepos(1) - Exp.D{thisTrial}.c(1)) / (Exp.D{thisTrial}.dx);
+%         eyeYon = (eyepos(2) - Exp.D{thisTrial}.c(2)) / (Exp.D{thisTrial}.dy);
+%         eyeXon = Exp.S.centerPix(1) + eyeXon;
+%         eyeYon = Exp.S.centerPix(2) - eyeYon;
 
         
         % exclude eye positions that are off the screen
         if hypot(eyeX, eyeY) > ip.Results.ExclusionRadius
-            blocks = [blocks; frameCounter];
+%             blocks = [blocks; frameCounter-1];
+            blocks = [blocks; [blockStart frameCounter-1]];
+            blockStart = frameCounter + 1;
 %             if useh5
-%                 frameCounter = frameCounter + 1;
+%             frameCounter = frameCounter + 1;
 %             end
             continue
         end
@@ -422,14 +461,24 @@ for iTrial = 1:nTrials
         eyeY = Exp.S.centerPix(2) - eyeY;
 
         % round to nearest pixel
-        eyeX = round(eyeX);
-        eyeY = round(eyeY);
+        if roundEye
+            eyeX = round(eyeX);
+            eyeY = round(eyeY);
+        end
+
+        % add shift if requested
+        if CorrectEyepos
+            eyeX = eyeX + shiftX(eyeIx);
+            eyeY = eyeY + shiftY(eyeIx);
+        end
         
         % skip frame if eye position is invalid
         if isnan(eyeX) || isnan(eyeY)
-            blocks = [blocks; frameCounter];
+%             blocks = [blocks; frameCounter-1];
+            blocks = [blocks; [blockStart frameCounter-1]];
+            blockStart = frameCounter + 1;
 %             if useh5
-%                 frameCounter = frameCounter + 1;
+%             frameCounter = frameCounter + 1;
 %             end
             continue
         end
@@ -448,9 +497,11 @@ for iTrial = 1:nTrials
             
             if (frameRefreshes(iFrame)~=noiseFrames(iFrame)) && (iFrame ~=nFrames)
                 fprintf('regenerateStimulus: noiseHistory doesn''t equal the frame refresh time on frame %d\n', iFrame)
-                blocks = [blocks; frameCounter];
+%                 blocks = [blocks; frameCounter-1];
+                blocks = [blocks; [blockStart frameCounter-1]];
+                blockStart = frameCounter + 1;
 %                 if useh5
-%                     frameCounter = frameCounter + 1;
+%                 frameCounter = frameCounter + 1;
 %                 end
                 
                 continue
@@ -536,9 +587,11 @@ for iTrial = 1:nTrials
                 eyeOnScreen = eyeX > dims(2) & eyeX < Exp.S.screenRect(3)-dims(2);
                 eyeOnScreen = eyeOnScreen & eyeY > dims(1) & eyeY < Exp.S.screenRect(4) - dims(1);
                 
-                I = zeros(dims-1);
+                I = zeros(dims);
                 if eyeOnScreen
-                    I = imcrop(Im, imrect); % requires the imaging processing toolbox
+                    I = interp2(Xscreen, Yscreen, Im, gx+eyeX, gy+eyeY, 'cubic', 0);
+
+%                     I2 = imcrop(Im, imrect); % requires the imaging processing toolbox
                 end
 
                 I = I(1:spatialBinSize:end,1:spatialBinSize:end);
@@ -557,16 +610,23 @@ for iTrial = 1:nTrials
             end
         
         else % fix rsvp stim
-            hObj.imagenum = Exp.D{thisTrial}.PR.NoiseHistory(iFrame,4);
-            hObj.position = Exp.D{thisTrial}.PR.NoiseHistory(iFrame,2:3);
-            if ip.Results.usePTBdraw
-                hObj.beforeFrame()
+            iiFrame = iFrame - startFrame + 1;
+%             disp([iiFrame iFrame])
+            if iiFrame < 1 || iiFrame > endFrame
+                I = zeros(dims);
             else
-                I = hObj.getImage(tmprect, spatialBinSize)-Exp.S.bgColour;
-                if ip.Results.debug
-                    figure(1); clf
-                    imagesc(I);
-                    pause
+
+                hObj.imagenum = Exp.D{thisTrial}.PR.NoiseHistory(iiFrame,4);
+                hObj.position = Exp.D{thisTrial}.PR.NoiseHistory(iiFrame,2:3);
+                if ip.Results.usePTBdraw
+                    hObj.beforeFrame()
+                else
+                    I = hObj.getImage(tmprect, spatialBinSize, Exp.S.screenRect(3:4))-Exp.S.bgColour;
+                    if ip.Results.debug
+                        figure(1); clf
+                        imagesc(I);
+                        pause
+                    end
                 end
             end
             
@@ -693,16 +753,25 @@ for iTrial = 1:nTrials
         
     end
     
+%     blocks = [blocks; frameCounter-1];
+    blocks = [blocks; [blockStart frameCounter-1]];
+    blockStart = frameCounter + 1;
+    
 end
 
 
     % clean up blocks
-    bd = blocks(diff(blocks)>1);
-    blocks = [bd(1:end-1)+1 bd(2:end)];
-    blocks(1) = 1;
+%     be = blocks(end);
+%     bd = [blocks(diff(blocks)>1); be];
+%     blocks = [bd(1:end-1)+1 bd(2:end)];
+    blocks = blocks(diff(blocks,[],2)>10,:);
+%     blocks(1) = 1;
 if useh5
     h5writeatt(h5fname, [h5path '/Stim'], 'size', [dims frameCounter-1])
-    h5create(h5fname, [h5path '/blocks'], size(blocks))
+    finfo = h5info(h5fname, h5path);
+    if ~any(arrayfun(@(x) strcmp(x.Name, 'blocks'), finfo.Datasets))
+        h5create(h5fname, [h5path '/blocks'], size(blocks))
+    end
     h5write(h5fname, [h5path '/blocks'], blocks)
 else
     Stim(:,:,frameCounter:end) = [];
