@@ -26,7 +26,7 @@ switch user
 end
 
 projectPath = fileparts(mfilename('fullpath'));
-addpath(fullfile(projectPath, 'Code'))
+addpath(fullfile(projectPath, 'code'))
 
 if ~isempty(marmoPipePath)
     addpath(marmoPipePath)
