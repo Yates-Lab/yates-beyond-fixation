@@ -21,14 +21,16 @@ function h5name = dataGenerateHdf5(Exp, S, varargin)
 ip = inputParser();
 ip.addParameter('stimulus', 'Gabor')
 ip.addParameter('testmode', true)
-ip.addParameter('eyesmooth', 19)
+ip.addParameter('eyesmooth', 41)
+ip.addParameter('eyesmoothorder', 3)
 ip.addParameter('includeProbe', true)
-ip.addParameter('correctEyePos', false)
+ip.addParameter('correctEyePos', [])
 ip.addParameter('GazeContingent', true)
-ip.addParameter('nonlinearEyeCorrection', true)
+ip.addParameter('nonlinearEyeCorrection', false)
 ip.addParameter('overwrite', false)
 ip.addParameter('usePTBdraw', true)
 ip.addParameter('debug', false)
+ip.addParameter('validTrials', [])
 ip.parse(varargin{:})
 
 %% manual adjustment to rect
@@ -54,11 +56,19 @@ if ~exist(dataDir, 'dir')
     mkdir(dataDir)
 end
 
+if isempty(ip.Results.correctEyePos)
+    correctEyePos = 0;
+    shifter = [];
+else
+    correctEyePos = 1;
+    shifter = ip.Results.correctEyePos;
+end
+
 fname = sprintf('%s_%s_%d_%d_%d_%d_%d_%d.hdf5',...
     strrep(Exp.FileTag, '.mat', ''),...
     strrep(strrep(num2str(S.rect), ' ', '_'), '__', '_'), ... % rect
     ip.Results.GazeContingent, ...
-    ip.Results.correctEyePos, ...
+    correctEyePos, ...
     ip.Results.includeProbe, ...
     ip.Results.eyesmooth, ...
     ip.Results.nonlinearEyeCorrection, ...
@@ -93,6 +103,9 @@ stimulusSet = ip.Results.stimulus;
 fprintf('Reconstructing [%s] stimuli...\n', stimulusSet)
 
 validTrials = io.getValidTrials(Exp, stimulusSet);
+if ~isempty(ip.Results.validTrials)
+    validTrials = intersect(validTrials, ip.Results.validTrials);
+end
 
 numValidTrials = numel(validTrials);
 
@@ -102,11 +115,7 @@ if numValidTrials == 0
 end
 
 % --- GET EYE POSITION
-if ip.Results.correctEyePos
-    eyePos = io.getCorrectedEyePos(Exp, 'usebilinear', ip.Results.nonlinearEyeCorrection);
-else
-    eyePos = Exp.vpx.smo(:,2:3);
-end
+eyePos = Exp.vpx.smo(:,2:3);
 
 % --- SMOOTH EYE POSITION
 if ip.Results.eyesmooth > 1 
@@ -118,10 +127,18 @@ if ip.Results.eyesmooth > 1
         smwin = ip.Results.eyesmooth;
     end
     
-    eyePos(:,1) = sgolayfilt(eyePos(:,1), 1, smwin);
-    eyePos(:,2) = sgolayfilt(eyePos(:,2), 1, smwin);
+    eyePos(:,1) = sgolayfilt(eyePos(:,1), ip.Results.eyesmoothorder, smwin);
+    eyePos(:,2) = sgolayfilt(eyePos(:,2), ip.Results.eyesmoothorder, smwin);
     
 end
+
+% % --- Correct with shifter if available
+% if correctEyePos
+%     iix = ~isnan(hypot(Exp.vpx.smo(:,2), Exp.vpx.smo(:,3)));
+%     
+% %     eyePos = io.getCorrectedEyePos(Exp, 'usebilinear', ip.Results.nonlinearEyeCorrection);
+% end
+
 
 % make sure we have the latency of the monitor / graphics card included
 if ~isfield(S, 'Latency')
@@ -176,6 +193,7 @@ fprintf('Regenerating stimuli...\n')
 regenerateStimulus(Exp, validTrials, rect, ...
     'spatialBinSize', binSize, ...
     'GazeContingent', gazeContingent, ...
+    'Shifter', shifter, ...
     'Latency', Latency, 'eyePos', eyePos, ...
     'includeProbe', ip.Results.includeProbe, ...
     'debug', ip.Results.debug, ...
@@ -241,18 +259,34 @@ Y = Y(:,cluster_ids);
 NC = numel(cluster_ids);
 
 % update hdf5 file
-h5create(h5name, [h5path, '/Robs'], size(Y))
+finfo = h5info(h5name, h5path);
+if ~any(arrayfun(@(x) strcmp(x.Name, 'Robs'), finfo.Datasets))
+    h5create(h5name, [h5path, '/Robs'], size(Y))
+end
+
+if ~any(arrayfun(@(x) strcmp(x.Name, 'valinds'), finfo.Datasets))
+    h5create(h5name, [h5path, '/valinds'], size(valdata))
+end
+
+if ~any(arrayfun(@(x) strcmp(x.Name, 'labels'), finfo.Datasets))
+    h5create(h5name, [h5path, '/labels'], size(labels))
+end
+
+if ~any(arrayfun(@(x) strcmp(x.Name, 'slist'), finfo.Datasets))
+    h5create(h5name, [h5path, '/slist'], size(slist))
+end
+
 h5write(h5name, [h5path, '/Robs'], Y)
 h5writeatt(h5name, [h5path, '/Robs'], 'NC', NC)
 h5writeatt(h5name, [h5path, '/Robs'], 'cids', cluster_ids)
 
-h5create(h5name, [h5path, '/valinds'], size(valdata))
+
 h5write(h5name, [h5path, '/valinds'], valdata)
 
-h5create(h5name, [h5path, '/labels'], size(labels))
+
 h5write(h5name, [h5path, '/labels'], labels)
 
-h5create(h5name, [h5path, '/slist'], size(slist))
+
 h5write(h5name, [h5path, '/slist'], slist)
 
 %%
