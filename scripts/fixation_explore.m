@@ -37,7 +37,7 @@ plot(eyeX, '-r')
 %%
 
 
-stimulusSet = 'FixRsvpStim';
+stimulusSet = 'BackImage';
 validTrials = io.getValidTrials(Exp, stimulusSet);
 
 tstart = Exp.ptb2Ephys(cellfun(@(x) x.STARTCLOCKTIME, Exp.D(validTrials)));
@@ -194,6 +194,7 @@ subplot(1,2,2)
 imagesc(Stim2(:,:,4))
 
 %%
+iTrial = 1;
 %%
 iTrial = iTrial + 1;
 % for iTrial = 1:numel(validTrials)
@@ -237,7 +238,7 @@ iTrial = iTrial + 1;
     for ifix = 1:nfix
         x = [fixon(fixix(ifix))*[1 1] sacon(fixix(ifix))*[1 1]];
         y = [ylim fliplr(ylim)];
-        fill(x,y,'r', 'FaceAlpha', .1)
+        fill(x,y,'r', 'FaceAlpha', .1, 'EdgeColor', 'none')
     %     fill(*[1 1], ylim, 'r')
     end
     
@@ -253,45 +254,45 @@ iTrial = iTrial + 1;
     axis off
     pause(.1)
 
-
-
-    win = [0 0];
-    
-    for ifix = 1:nfix
-        %     if ifix > nfix
-        %         ifix = 0;
-        %     end
-
-        thisfix = fixix(ifix);
-
-        ii = eyeTime > fixon(thisfix)+win(1) & eyeTime < sacon(thisfix)+win(2);
-
-        et = eyeTime(ii);
-        fixX = eyeX(ii)*ppd + ctr(1);
-        fixY = -eyeY(ii)*ppd + ctr(2);
-
-
-        eyeFiltX = filter(bcEye, 1, eyeX(ii));
-        eyeFiltY = filter(bcEye, 1, eyeY(ii));
-
-        eyeFiltX = eyeFiltX(1:nbc:end);
-        eyeFiltY = eyeFiltY(1:nbc:end);
-
-        binfun = @(t) (t==0) + ceil(t/binsize);
-
-        iix = st > fixon(thisfix)+win(1) & st < sacon(thisfix)+win(2);
-        st_ = st(iix);
-        clu_ = clu(iix);
-        
-        n = size(eyeFiltX,1);
-        spk = sparse(binfun(st_ - fixon(thisfix)), double(clu_), ones(numel(clu_), 1), n+1, MC);
-        spk = full(spk(1:n,:));
-    
-
-        gazeFixX(1:n,numFixCumulative(iTrial)+ifix) = eyeFiltX;
-        gazeFixY(1:n, numFixCumulative(iTrial)+ifix) = eyeFiltY;
-        spikesFix(1:n,:,numFixCumulative(iTrial)+ifix) = spk(:,cids);
-    end
+% 
+% 
+%     win = [0 0];
+%     
+%     for ifix = 1:nfix
+%         %     if ifix > nfix
+%         %         ifix = 0;
+%         %     end
+% 
+%         thisfix = fixix(ifix);
+% 
+%         ii = eyeTime > fixon(thisfix)+win(1) & eyeTime < sacon(thisfix)+win(2);
+% 
+%         et = eyeTime(ii);
+%         fixX = eyeX(ii)*ppd + ctr(1);
+%         fixY = -eyeY(ii)*ppd + ctr(2);
+% 
+% 
+%         eyeFiltX = filter(bcEye, 1, eyeX(ii));
+%         eyeFiltY = filter(bcEye, 1, eyeY(ii));
+% 
+%         eyeFiltX = eyeFiltX(1:nbc:end);
+%         eyeFiltY = eyeFiltY(1:nbc:end);
+% 
+%         binfun = @(t) (t==0) + ceil(t/binsize);
+% 
+%         iix = st > fixon(thisfix)+win(1) & st < sacon(thisfix)+win(2);
+%         st_ = st(iix);
+%         clu_ = clu(iix);
+%         
+%         n = size(eyeFiltX,1);
+%         spk = sparse(binfun(st_ - fixon(thisfix)), double(clu_), ones(numel(clu_), 1), n+1, MC);
+%         spk = full(spk(1:n,:));
+%     
+% 
+%         gazeFixX(1:n,numFixCumulative(iTrial)+ifix) = eyeFiltX;
+%         gazeFixY(1:n, numFixCumulative(iTrial)+ifix) = eyeFiltY;
+%         spikesFix(1:n,:,numFixCumulative(iTrial)+ifix) = spk(:,cids);
+%     end
 % end
 
 %%
