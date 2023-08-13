@@ -193,6 +193,7 @@ frameCounter = 1;
 for iTrial = 1:nTrials
     
     fprintf('%d/%d trials\n', iTrial, nTrials)
+    
     thisTrial = validTrials(iTrial);
     useFixation = false; % defaults to false
 
@@ -216,6 +217,11 @@ for iTrial = 1:nTrials
                 continue
             end
             
+            if isempty(Exp.D{thisTrial}.PR.hNoise)
+                warning("missing noise objects")
+                keyboard
+            end
+
             hNoise = copy(Exp.D{thisTrial}.PR.hNoise);
             if ismethod(hNoise, 'reset')
                 hNoise.reset();
