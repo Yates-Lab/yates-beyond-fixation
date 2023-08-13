@@ -42,7 +42,7 @@ for isess = 1
     Frate = 120;
     eyeposexclusion = 20;
     win = [-1 20];
-    ROIWINDOWSIZE = 80; % spatial dimensions of the high-res ROI
+    ROIWINDOWSIZE = 150; % spatial dimensions of the high-res ROI
 
     [Xstim, RobsSpace, opts] = io.preprocess_spatialmapping_data(Exp, ...
         'ROI', ROI*Exp.S.pixPerDeg, 'binSize', binSize*Exp.S.pixPerDeg, ...
@@ -121,34 +121,13 @@ for isess = 1
     %% Do high-res reconstruction using PTB (has to replay the whole experiment)
     Exp.FileTag = processedFileName;
     S.spikeSorting = 'kilo';
-    %     {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim'}
+    stimsets = {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim', 'FixFlashGabor'};
 %     fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Gabor'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false, 'EyeSmoothing', 19, 'EyeSmoothingOrder', 1);
-    fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Gabor'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false, 'useFix', true);
+    fname = make_stimulus_file_for_py(Exp, S, 'stimlist', stimsets, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false, 'useFix', true);
     
-    %% test that it worked
-    id = 1;
+    %% get STAs to check that you have the right rect
     stim = 'Gabor';
     tset = 'Train';
-    
-    sz = h5readatt(fname, ['/' stim '/' tset '/Stim'], 'size');
-    
-    iFrame = 1;
-    
-    %% show sample frame
-    
-    iFrame = iFrame + 1;
-    I = h5read(fname, ['/' stim '/' tset '/Stim'], [iFrame, 1,1], [1 sz(1:2)']);
-    I = squeeze(I);
-    % I = h5read(fname{1}, ['/' stim '/' set '/Stim'], [1,1,iFrame], [sz(1:2)' 1]);
-    figure(id); clf
-    imagesc(I)
-    colorbar
-    colormap gray
-    drawnow
-
-
-
-    %% get STAs to check that you have the right rect
     spike_sorting = 'kilo';
     Stim = h5read(fname, ['/' stim '/' tset '/Stim']);
     % Robs = h5read(fname, ['/' stim '/' set '/Robs']);
@@ -205,6 +184,91 @@ for isess = 1
     plot(xlim, thresh*[1 1], 'r')
     set(gcf, 'PaperSize', [4 3], 'PaperPosition', [0 0 4 3])
     exportgraphics(gcf, figname, 'Append', true);
+
+%% try to find center of gaze
+
+% we need the trial starts and stops and protocol name
+% we need raw eye traces
+% we need meta data that we're interest in (e.g., Grating / Probe / Reward)
+
+
+
+
+
+
+% DO THIS IN PYTHON
+% 
+% % find center of gaze
+% % 1) get all fixation trials
+% % 2) get all epochs when the monkey is fixating
+% % 3) get peak of distribution and call that center
+% fixTrials = find(cellfun(@(x) contains(lower(x.PR.name), 'fix'), Exp.D));
+% N = numel(fixTrials);
+% fprintf("Found %d trials with fixation\n", N)
+% 
+% trialStarts = cellfun(@(x) x.START_EPHYS, Exp.D(fixTrials));
+% trialStops = cellfun(@(x) x.END_EPHYS, Exp.D(fixTrials));
+% 
+% idx = getTimeIdx(Exp.vpx2ephys(Exp.vpx.smo(:,1)), trialStarts, trialStops);
+% 
+% eyeX = Exp.vpx.smo(idx,2);
+% eyeY = Exp.vpx.smo(idx,3);
+% 
+% bs = (1/60); % 1 arcminute
+% edges = -1:bs:1;
+% ctrs = edges(1:end-1) + bs/2;
+% 
+% C = histcounts2(eyeX, eyeY, edges, edges);
+% C = imgaussfilt(C,1);
+% 
+% figure(1); clf
+% imagesc(ctrs, ctrs, C'); hold on
+% plot([0 0], ylim, 'y')
+% plot(xlim, [0 0], 'y')
+% axis xy
+% colorbar
+% 
+% [yy,xx] = meshgrid(ctrs);
+% 
+% levels = [.25 .5 .75, .9];
+% N = numel(levels);
+% ctrxy = zeros(N,2);
+% C = C ./ max(C(:));
+% for i = 1:N
+%     level = levels(i);
+% 
+%     iix = C > level;
+%     w = C(iix) ./ sum(C(iix));
+%     
+%     cx = xx(iix)'*w;
+%     cy = yy(iix)'*w;
+%     ctrxy(i,1) = cx;
+%     ctrxy(i,2) = cy;
+% 
+%     scatter(cx, cy, 'o', 'filled')
+% end
+% 
+% 
+% Stat = struct();
+% Stat.binCenters = ctrs;
+% Stat.histogram = C;
+% Stat.threshold = levels;
+% Stat.centerOfGaze = ctrxy;
+% 
+% fields = fieldnames(Stat);
+% for ifield = 1:numel(fields)
+%     h5create(fname,'/CenterOfGaze/binCenters', size(ctrs))
+%     h5write(fname, '/CenterOfGaze/cgs', ctrs)
+
+
+
+
+
+
+
+
+
+
 
     %% Plot histogram of gaze positions
     xgrid = -8:1:8;
@@ -475,109 +539,119 @@ for isess = 1
 end
 
 
+%%
 
-%% Get spatiotemporal RFs
-NC = size(Robs,2);
-nlags = 20;
-nstim = size(Stim,2);
-ecc = hypot(eyeAtFrame(:,2)-Exp.S.centerPix(1), eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
-R = Robs;
-Rbar = mean(R);
-
-stas = zeros(nlags, nstim, NC);
-for lag = 1:nlags
-    fprintf('%d/%d lags\n', lag, nlags)
-    ix = ecc < 5.2 & labels == 1;
-    ix = find(ix);
-    ix = ix(ix > lag);
-    Rdelta = R(ix,:) - Rbar; %mean(R(ix,:));
-    stas(lag, :, :) = (X(ix-lag,:))'*Rdelta;
-end
-
-cc = 0; % initialize iterator
-
-%% plot one by one
-figure(2); clf
-cc = cc + 1;
-if cc > NC
-    cc = 1;
-end
-% cc = 58
-% cc = 81
-sta = stas(:,:,cc);
-% zscore the sta
-% sta = (sta - mean(sta(:))) ./ std(sta(:));
-
-clim = max(abs(sta(:)));
-xax = (1:NX)/Exp.S.pixPerDeg*60;
-yax = (1:NY)/Exp.S.pixPerDeg*60;
-for ilag = 1:nlags
-   subplot(2,ceil(nlags/2), ilag, 'align')
-   imagesc(xax, yax, reshape(sta(ilag,:), [NX NY])', [-1 1]*clim)
-   title(ilag)
-end
-
-% % colormap(plot.viridis)
-colormap(parula)
-title(cc)
 
 
 %%
 
-figure(1); clf
-imagesc(reshape(mean(squeeze(std(stas,[], 1)),2), [80, 80]))
 
+%%
 
-
-
-%% check that the online measured eye position 
-figure(1); clf
-plot(eyeX); hold on
-plot(eyeAtFrame(:,5), '.')
-
-figure(2); clf
-plot(eyeY); hold on
-plot(-eyeAtFrame(:,6), '.')
-
-% plot(eyeX - eyeAtFrame(:,5), '.')
-%% check that you can create the same shift from the raw eye traces
-
-% shift calculated on this (processed) dataset
-shiftX = fitresultX(eyeX, eyeY);
-shiftY = fitresultY(eyeX, eyeY);
-
-% shift using "raw" eye pos
-shiftX2 = fitresultX(eyeAtFrame(:,5), -eyeAtFrame(:,6));
-shiftY2 = fitresultY(eyeAtFrame(:,5), -eyeAtFrame(:,6));
-
-figure(1); clf
-xdelta = (shiftX - shiftX2);
-ydelta = (shiftY - shiftY2);
-mdx = mean(xdelta.^2, 'omitnan');
-mdy = mean(ydelta.^2, 'omitnan');
-
-histogram(xdelta, 'BinEdges', linspace(-1, 1, 100))
-hold on
-histogram(ydelta, 'BinEdges', linspace(-1, 1, 100))
-xlabel('Difference in Shifter output (pixels)')
-
-% histogram(xdelta, 'BinEdges', linspace(-10, 10, 100))
-
-
-
-% fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false, 'EyeCorrection', shifter, 'EyeSmoothing', 19, 'EyeSmoothingOrder', 1);
-fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'FixRsvpStim'}, 'overwrite', true, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false, 'EyeCorrection', shifter, 'EyeSmoothing', 19, 'EyeSmoothingOrder', 1);
-
-%% Copy to server
-server_string = 'jake@bancanus'; %'jcbyts@sigurros';
-output_dir = '/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'; %/home/jcbyts/Data/MitchellV1FreeViewing/stim_movies/';
-
-data_dir = getpref('FREEVIEWING', 'PROCESSED_DATA_DIR');
-command = 'scp ';
-command = [command fname ' '];
-command = [command server_string ':' output_dir];
-
-system(command)
-
-fprintf('%s\n', fname)
+% 
+% 
+% %% Get spatiotemporal RFs
+% NC = size(Robs,2);
+% nlags = 20;
+% nstim = size(Stim,2);
+% ecc = hypot(eyeAtFrame(:,2)-Exp.S.centerPix(1), eyeAtFrame(:,3)-Exp.S.centerPix(2))/Exp.S.pixPerDeg;
+% R = Robs;
+% Rbar = mean(R);
+% 
+% stas = zeros(nlags, nstim, NC);
+% for lag = 1:nlags
+%     fprintf('%d/%d lags\n', lag, nlags)
+%     ix = ecc < 5.2 & labels == 1;
+%     ix = find(ix);
+%     ix = ix(ix > lag);
+%     Rdelta = R(ix,:) - Rbar; %mean(R(ix,:));
+%     stas(lag, :, :) = (X(ix-lag,:))'*Rdelta;
+% end
+% 
+% cc = 0; % initialize iterator
+% 
+% %% plot one by one
+% figure(2); clf
+% cc = cc + 1;
+% if cc > NC
+%     cc = 1;
+% end
+% % cc = 58
+% % cc = 81
+% sta = stas(:,:,cc);
+% % zscore the sta
+% % sta = (sta - mean(sta(:))) ./ std(sta(:));
+% 
+% clim = max(abs(sta(:)));
+% xax = (1:NX)/Exp.S.pixPerDeg*60;
+% yax = (1:NY)/Exp.S.pixPerDeg*60;
+% for ilag = 1:nlags
+%    subplot(2,ceil(nlags/2), ilag, 'align')
+%    imagesc(xax, yax, reshape(sta(ilag,:), [NX NY])', [-1 1]*clim)
+%    title(ilag)
+% end
+% 
+% % % colormap(plot.viridis)
+% colormap(parula)
+% title(cc)
+% 
+% 
+% %%
+% 
+% figure(1); clf
+% imagesc(reshape(mean(squeeze(std(stas,[], 1)),2), [80, 80]))
+% 
+% 
+% 
+% 
+% %% check that the online measured eye position 
+% figure(1); clf
+% plot(eyeX); hold on
+% plot(eyeAtFrame(:,5), '.')
+% 
+% figure(2); clf
+% plot(eyeY); hold on
+% plot(-eyeAtFrame(:,6), '.')
+% 
+% % plot(eyeX - eyeAtFrame(:,5), '.')
+% %% check that you can create the same shift from the raw eye traces
+% 
+% % shift calculated on this (processed) dataset
+% shiftX = fitresultX(eyeX, eyeY);
+% shiftY = fitresultY(eyeX, eyeY);
+% 
+% % shift using "raw" eye pos
+% shiftX2 = fitresultX(eyeAtFrame(:,5), -eyeAtFrame(:,6));
+% shiftY2 = fitresultY(eyeAtFrame(:,5), -eyeAtFrame(:,6));
+% 
+% figure(1); clf
+% xdelta = (shiftX - shiftX2);
+% ydelta = (shiftY - shiftY2);
+% mdx = mean(xdelta.^2, 'omitnan');
+% mdy = mean(ydelta.^2, 'omitnan');
+% 
+% histogram(xdelta, 'BinEdges', linspace(-1, 1, 100))
+% hold on
+% histogram(ydelta, 'BinEdges', linspace(-1, 1, 100))
+% xlabel('Difference in Shifter output (pixels)')
+% 
+% % histogram(xdelta, 'BinEdges', linspace(-10, 10, 100))
+% 
+% 
+% 
+% % fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'Dots', 'Gabor', 'BackImage', 'Grating', 'FixRsvpStim'}, 'overwrite', false, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false, 'EyeCorrection', shifter, 'EyeSmoothing', 19, 'EyeSmoothingOrder', 1);
+% fname = make_stimulus_file_for_py(Exp, S, 'stimlist', {'FixRsvpStim'}, 'overwrite', true, 'GazeContingent', true, 'includeProbe', true, 'usePTBdraw', false, 'EyeCorrection', shifter, 'EyeSmoothing', 19, 'EyeSmoothingOrder', 1);
+% 
+% %% Copy to server
+% server_string = 'jake@bancanus'; %'jcbyts@sigurros';
+% output_dir = '/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'; %/home/jcbyts/Data/MitchellV1FreeViewing/stim_movies/';
+% 
+% data_dir = getpref('FREEVIEWING', 'PROCESSED_DATA_DIR');
+% command = 'scp ';
+% command = [command fname ' '];
+% command = [command server_string ':' output_dir];
+% 
+% system(command)
+% 
+% fprintf('%s\n', fname)
 

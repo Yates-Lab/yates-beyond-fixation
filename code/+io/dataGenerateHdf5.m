@@ -21,6 +21,7 @@ function h5name = dataGenerateHdf5(Exp, S, varargin)
 ip = inputParser();
 ip.addParameter('stimulus', 'Gabor')
 ip.addParameter('testmode', true)
+ip.addParameter('usefix', false)
 ip.addParameter('eyesmooth', 41)
 ip.addParameter('eyesmoothorder', 3)
 ip.addParameter('includeProbe', true)
@@ -64,7 +65,11 @@ else
     shifter = ip.Results.correctEyePos;
 end
 
-fname = sprintf('%s_%s_%d_%d_%d_%d_%d_%d.hdf5',...
+if ip.Results.usefix
+    assert(isfield(Exp.vpx, 'fix'), 'dataGenerateHdf5: usefix requested but fix field is missing from Exp.vpx')
+end
+
+fname = sprintf('%s_%s_%d_%d_%d_%d_%d_%d_%d.hdf5',...
     strrep(Exp.FileTag, '.mat', ''),...
     strrep(strrep(num2str(S.rect), ' ', '_'), '__', '_'), ... % rect
     ip.Results.GazeContingent, ...
@@ -72,7 +77,8 @@ fname = sprintf('%s_%s_%d_%d_%d_%d_%d_%d.hdf5',...
     ip.Results.includeProbe, ...
     ip.Results.eyesmooth, ...
     ip.Results.nonlinearEyeCorrection, ...
-    ip.Results.usePTBdraw);
+    ip.Results.usePTBdraw, ...
+    ip.Results.usefix);
 
 h5name = fullfile(dataDir, fname);
 if ip.Results.testmode
@@ -115,21 +121,25 @@ if numValidTrials == 0
 end
 
 % --- GET EYE POSITION
-eyePos = Exp.vpx.smo(:,2:3);
+if ip.Results.usefix
+    eyePos = Exp.vpx.fix;
+else
+    eyePos = Exp.vpx.smo(:,2:3);
 
-% --- SMOOTH EYE POSITION
-if ip.Results.eyesmooth > 1 
-    
-    % smoothing window must be odd
-    if mod(ip.Results.eyesmooth-1,2)~=0
-        smwin = ip.Results.eyesmooth - 1;
-    else
-        smwin = ip.Results.eyesmooth;
+    % --- SMOOTH EYE POSITION
+    if ip.Results.eyesmooth > 1
+
+        % smoothing window must be odd
+        if mod(ip.Results.eyesmooth-1,2)~=0
+            smwin = ip.Results.eyesmooth - 1;
+        else
+            smwin = ip.Results.eyesmooth;
+        end
+
+        eyePos(:,1) = sgolayfilt(eyePos(:,1), ip.Results.eyesmoothorder, smwin);
+        eyePos(:,2) = sgolayfilt(eyePos(:,2), ip.Results.eyesmoothorder, smwin);
+
     end
-    
-    eyePos(:,1) = sgolayfilt(eyePos(:,1), ip.Results.eyesmoothorder, smwin);
-    eyePos(:,2) = sgolayfilt(eyePos(:,2), ip.Results.eyesmoothorder, smwin);
-    
 end
 
 % % --- Correct with shifter if available
