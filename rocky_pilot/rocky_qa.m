@@ -198,6 +198,7 @@ legend([fh{:}], stimtypes, 'Location', 'BestOutside')
 
 
 %% set stable region
+% using the figure above, pick start and stop bounds
 start_ephys = 1911;
 stop_ephys = 4422;
 
@@ -209,8 +210,8 @@ fprintf('Found %d trials with stable ephys\n', numel(validTrials))
 
 % these data come from the foveal representation so the central 3 d.v.a
 % are sufficient
-ROI = [-1 -1 1 1]*3; 
-% ROI = ROI + [0 -3 0 -3];
+ROI = [-1 -1 1 1]*2; 
+% ROI = ROI + [0 -3 0 -3]; % offset if necessary
 % coarse bin size
 binSize = .25;
 
@@ -292,11 +293,14 @@ end
 colormap(plot.coolwarm)
 
 %% find good units
-
+% the idea here is that goog units will have blobby receptive fields, so
+% that will be well captured by a rank 1 matrix. So look at the percent
+% variance explained by the first eigenvalue
 ss = zeros(NC, 1);
 for i = 1:NC
     [u,s,v] = svd(reshape(zsta(:,i), opts.dims));
-    ss(i) = s(1)./sum(diag(s));
+    s = diag(s);
+    ss(i) = sum(s(1:2))./sum(s);
 end
 
 gm = fitgmdist(ss, 2);
@@ -338,7 +342,7 @@ end
 % size(stas(:,))
 colormap(plot.coolwarm)
 
-%%
+
 %% find ROI
 ROIWINDOWSIZE = 100; % spatial dimensions of the high-res ROI
 winsize = ROIWINDOWSIZE;
@@ -350,7 +354,7 @@ imagesc(opts.xax, opts.yax, rf);
 hold on
 plot(ctr(1), ctr(2), 'or')
 S.rect = round([ctr ctr]) + [-1 -1 1 1]*winsize/2;
-S.rect = [-50 0 200 -250];
+% S.rect = [-50 0 200 -250];
 
 in_pixels = false;
 if in_pixels

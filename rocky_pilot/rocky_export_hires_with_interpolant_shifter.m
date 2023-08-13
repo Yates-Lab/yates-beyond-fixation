@@ -3,6 +3,7 @@
 % Exp = load('~/Downloads/r20230608.mat/');
 % Exp = load('~/Downloads/r20230618_dpi2.mat/');
 
+load('~/Dropbox/MarmoLabWebsite/PSA/Allen_Reimport/Allen_2022-06-01_13-31-38_V1_64b.mat');
 
 
 
@@ -26,7 +27,7 @@ xax = -15:.1:15;
 eyeX = Exp.vpx.smo(:,2);
 eyeY = Exp.vpx.smo(:,3);
 C = histcounts2(eyeX, eyeY, xax, xax);
-center = [-3,1];
+center = [-3,1];a
 
 imagesc(xax, xax, C');
 hold on

@@ -1,5 +1,5 @@
 %% test that it worked
-fname = '~/Dropbox/Datasets/Mitchell/stim_movies/r20230618_-50___0_200_250_1_0_1_3_0_0.hdf5';
+% fname = '~/Dropbox/Datasets/Mitchell/stim_movies/r20230618_-50___0_200_250_1_0_1_3_0_0.hdf5';
 
 id = 1;
 stim = 'Gabor';
