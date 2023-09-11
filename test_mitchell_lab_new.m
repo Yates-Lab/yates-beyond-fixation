@@ -1,9 +1,6 @@
 
-%%
-fname = 'Allen_2022-06-01_13-31-38_V1_64b.mat';
-regexp(fname, '^[^_]*_(\d{4})-(\d{2})-(\d{2})_\d{2}-\d{2}-\d{2}.*$', '\1\2\3')
-
-%%
+%% Load file
+fname = 'Allen_2022-06-01_13-31-38_V1_64b_rig.mat';
 Exp = load(fullfile('/Users/jake/Dropbox/MarmoLabWebsite/PSA/Allen_Reimport/', fname));
 if isfield(Exp, 'Exp')
     Exp = Exp.Exp;
@@ -13,27 +10,15 @@ end
 %%
 % check all trials with hNoise 
 objectTrials = find(cellfun(@(x) isfield(x.PR, 'hNoise'), Exp.D));
-valid = cellfun(@(x) isempty(x.PR.hNoise), Exp.D(objectTrials));
-mean(valid)
+valid = cellfun(@(x) ~isempty(x.PR.hNoise), Exp.D(objectTrials));
+fprintf("%.2f%% of trials have valid objects\n", 100*mean(valid))
 
-
-
-%%
+%% Re-sync clocks, eye position, and find fixations
 Exp = fix_mitchelllab_exports(Exp);
 result = regexprep(fname, '^[^_]*_(\d{4})-(\d{2})-(\d{2})_\d{2}-\d{2}-\d{2}.*$', '$1$2$3');
 Exp.processedFileName = [lower(input_string(1)) result '.mat'];
 processedFileName = Exp.processedFileName;
-%% add labels
-dxdt = @(x) imgaussfilt(filter([1; -1], 1, x), 5);
-dx = dxdt(Exp.vpx.fix(:,1))/1e-3;
-dy = dxdt(Exp.vpx.fix(:,2))/1e-3;
-spd = hypot(dx, dy);
-velthresh = 10;
-Exp.vpx.Labels = 4*ones(size(dx));
-Exp.vpx.Labels(spd > velthresh) = 2;
-Exp.vpx.Labels(spd < velthresh) = 1;
 
-figure, plot(Exp.vpx.Labels)
 %% get coarse resolution spatial RFs
 
 % these data come from the foveal representation so the central 3 d.v.a

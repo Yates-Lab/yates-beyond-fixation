@@ -746,12 +746,12 @@ for iTrial = 1:nTrials
             % seed good 
             frameInfo.seedGood(frameCounter) = seedGood;
             
-            try
-                Stim(:,:, frameCounter) = I;
-            catch
-                warning('frame not saved')
-                continue
-            end
+%             try
+            Stim(:,:, frameCounter) = I;
+%             catch
+%                 warning('frame not saved')
+%                 continue
+%             end
 
         end
         

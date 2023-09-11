@@ -31,6 +31,10 @@ for isess = 1
     Exp = load(fname);
     Exp = fix_mitchelllab_exports(Exp);
 
+    %%
+
+    
+
     %% get coarse resolution spatial RFs
     
     % these data come from the foveal representation so the central 3 d.v.a
@@ -192,7 +196,124 @@ for isess = 1
 % we need meta data that we're interest in (e.g., Grating / Probe / Reward)
 
 
+%% write eye position to h5 file
 
+figure(1); clf
+plot(Exp.vpx2ephys(Exp.vpx.smo(:,1)), Exp.vpx.smo(:,2)); hold on
+plot(ftoe, (eyeAtFrame(:,2)-Exp.S.centerPix(1))/Exp.S.pixPerDeg, '.')
+
+%%
+Stat = struct();
+Stat.timestamps = Exp.vpx2ephys(Exp.vpx.smo(:,1));
+Stat.eyeposDeg = Exp.vpx.smo(:,2:3);
+Stat.ppd = Exp.S.pixPerDeg;
+Stat.ctrpx = Exp.S.centerPix;
+
+fname = io.h5_add_struct(fname, Stat, '/ddpi');
+
+%% write trial starts, stops, protocol, and reward
+
+Stat = struct();
+
+Stat.trialStarts = cellfun(@(x) x.START_EPHYS, Exp.D);
+Stat.trialStops = cellfun(@(x) x.END_EPHYS, Exp.D);
+nTrials = numel(Exp.D);
+Stat.protocol = repmat({'unrecognized'}, nTrials, 1);
+Stat.rewardTimes = Exp.ptb2Ephys(cell2mat(cellfun(@(x) x.rewardtimes', Exp.D, 'UniformOutput', false)));
+
+stimList = {'Grating', 'Gabor', 'Dots', 'BackImage', ...
+        'Forage', ...
+        'FixRsvpStim', ...
+        'FaceCal', ...
+        'FixCalib', ...
+        'ForageStaticLines', ...
+        'FixFlashGabor', ...
+        'MTDotMapping', ...
+        'DriftingGrating'};
+
+for i = 1:numel(stimList)
+    tlist = io.getValidTrials(Exp, stimList{i});
+    if isempty(tlist)
+        continue
+    end
+    for j = tlist(:)'
+        Stat.protocol{j} = stimList{i};
+    end
+end
+
+fname = io.h5_add_struct(fname, Stat, '/trials');
+
+% %%
+% [m, s, bc, v, tspcnt] = eventPsth(Exp.vpx2ephys(Exp.slist(:,1)), Stat.rewardTimes, [-.5 .5], .005);
+% 
+% figure(1); clf
+% plot(bc, m)
+
+%% write the imagefiles and 
+
+
+tlist = io.getValidTrials(Exp, 'BackImage');
+imstarts = Exp.ptb2Ephys(cellfun(@(x) x.PR.startTime, Exp.D(tlist)));
+imstops = Exp.ptb2Ephys(cellfun(@(x) x.PR.imageOff, Exp.D(tlist)));
+imrect = cell2mat(cellfun(@(x) x.PR.destRect, Exp.D(tlist), 'uni', 0));
+imlist = [];
+for i = tlist(:)'
+    tmp = strsplit(Exp.D{i}.PR.imagefile, '/');
+    imlist = [imlist; tmp(end)];
+end
+
+Stat = struct();
+Stat.startTimes = imstarts;
+Stat.stopTimes = imstops;
+Stat.imageList = imlist;
+Stat.imageRect = imrect;
+fname = io.h5_add_struct(fname, Stat, '/BackImage');
+
+% f = h5info(fname, '/BackImage');
+% arrayfun(@(x) x.Name, f.Groups(2).Datasets, 'uni', 0)
+
+
+%% write the Grating condition
+
+tlist = io.getValidTrials(Exp, 'Grating');
+
+isfrozen = cellfun(@(x) x.PR.frozenSequence==1, Exp.D(tlist));
+
+Stat = struct();
+Stat.timestamps = Exp.ptb2Ephys(cell2mat(cellfun(@(x) x.PR.NoiseHistory(:,1), Exp.D(tlist), 'uni', 0)));
+Stat.ori = cell2mat(cellfun(@(x) x.PR.NoiseHistory(:,2), Exp.D(tlist), 'uni', 0));
+Stat.sf = cell2mat(cellfun(@(x) x.PR.NoiseHistory(:,3), Exp.D(tlist), 'uni', 0));
+
+figure(1); clf
+plot(Stat.timestamps, Stat.ori, '.')
+
+fname = io.h5_add_struct(fname, Stat, '/Grating');
+
+% tlist = io.getValidTrials(Exp, 'ForageStaticLines');
+% 
+
+%%
+%%%%%%%%%%%%%
+% TODO: clean this up a bit and then comit the changes!!
+
+
+%%%%%%%
+
+%% Copy to server
+server_string = 'jake@bancanus'; %'jcbyts@sigurros';
+output_dir = '/home/jake/Data/Datasets/MitchellV1FreeViewing/stim_movies/'; %/home/jcbyts/Data/MitchellV1FreeViewing/stim_movies/';
+
+data_dir = getpref('FREEVIEWING', 'PROCESSED_DATA_DIR');
+command = 'scp ';
+command = [command fname ' '];
+command = [command server_string ':' output_dir];
+
+system(command)
+
+fprintf('%s\n', fname)
+
+
+%%
 
 
 
@@ -540,6 +661,7 @@ end
 
 
 %%
+
 
 
 
