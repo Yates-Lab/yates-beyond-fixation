@@ -134,7 +134,7 @@ Robs = binNeuronSpikeTimesFast(Exp.osp, frameTimes, spikeBinSize);
 if isempty(ip.Results.cids)
     cids = Exp.osp.cids;
 else
-    cids = Exp.osp.cids;
+    cids = ip.Results.cids;
 end
 if isempty(intersect(unique(Exp.osp.clu),  Exp.osp.cids))
     warning('provided cids does not match unit ids')
