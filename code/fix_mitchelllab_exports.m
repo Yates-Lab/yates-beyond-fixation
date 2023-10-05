@@ -1,4 +1,19 @@
 function Exp = fix_mitchelllab_exports(Exp)
+% Function to post-process a MarmoV5 dataset
+% There are several steps to postprocess the dataset:
+% 1. re-synchronize clocks: Jude's lab does not use function handles to
+%                           synchronize so we do that here
+% 2. Find good blocks:      
+%       During free-viewing, animals can look off the screen, blink, or get
+%       drowsy, leading to dropped tracks. We need to find contiguous
+%       blocks that are > than a minimum size. Here, we default to 500ms
+%       blocks as a minimum.
+% 3. Upsample / Fix missing samples from eye traces
+%       The ddpi is pretty brittle and will drop samples during saccades.
+%       If there are fewer than N samples of missing data, we interpolate
+% 4. Detect saccades and fit a sigmoid to every pair of fixations
+%       This is used for analyses that compare measured eye position to
+%       pretend stable fixations
 
 if isfield(Exp, 'Exp')
     Exp = Exp.Exp;
@@ -10,6 +25,7 @@ Exp.vpx2ephys = synchtime.sync_vpx_to_ephys_clock(Exp, [], 'mode', 'linear', 'de
 
 % useful function handle
 dxdt = @(x) imgaussfilt(filter([1; -1], 1, x), 5);
+
 %% cleanup eye traces and re-detect saccades
 
 % USER SET PROPERTIES
@@ -236,6 +252,12 @@ Exp.vpx.Labels(spd < velthresh) = 1;
     'MinGap', 20, ...
     'FlagCurve', 1.2, ...
     'SampleRate', 1000);
+
+%% Fix 0-indexed spike cluster ids
+if min(Exp.osp.clu)==0
+    Exp.osp.clu = Exp.osp.clu + 1;
+    Exp.osp.cids = unique(Exp.osp.clu(:))';
+end
 
 
 
