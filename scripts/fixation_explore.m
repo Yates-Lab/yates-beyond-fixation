@@ -1,45 +1,14 @@
 %% Overview
-% This script demonstrates extracting a 
 
-figure(4); clf
-
-
-dt = median(diff(Exp.vpx.raw0(:,1)));
-win = 0.041;
-win = ceil(win/dt);
+% Note: requires and processed Exp struct to be in the workspace
 
 
-plot(Exp.vpx.raw0(:,1), Exp.vpx.raw0(:,2))
-hold on
-plot(Exp.vpx.raw0(:,1), sgolayfilt(Exp.vpx.raw0(:,2), 3, win))
-hold on
-plot(Exp.vpx.raw0(:,1), sgolayfilt(Exp.vpx.raw0(:,2), 1, 19))
-
-% plot(Exp.vpx.raw(:,1), Exp.vpx.raw(:,2))
-
-%%
-
-
-% plot(Exp.vpx.smo(:,2))
-hold on
-
-Bx = robustfit(Exp.vpx.raw(:,2), Exp.vpx.smo(:,2));
-By = robustfit(Exp.vpx.raw(:,3), Exp.vpx.smo(:,3));
-
-eyeX = Exp.vpx.raw(:,2)*Bx(2) + Bx(1);
-eyeY = Exp.vpx.raw(:,3)*By(2) + By(1);
-
-eyeX = sgolayfilt(eyeX, 3, 41);
-
-plot(eyeX, '-r')
-% 
-
-%%
-
-
-stimulusSet = 'BackImage';
+% this is how you get which trials are which
+stimulusSet = 'BackImage'; % Gabor, Grating, FixRsvpStim
 validTrials = io.getValidTrials(Exp, stimulusSet);
 
+% this is when the trials started and stopped in the same clock as the
+% ephys
 tstart = Exp.ptb2Ephys(cellfun(@(x) x.STARTCLOCKTIME, Exp.D(validTrials)));
 tstop = Exp.ptb2Ephys(cellfun(@(x) x.ENDCLOCKTIME, Exp.D(validTrials)));
 
@@ -89,29 +58,7 @@ bcEye = ones(nbc,1)/nbc;
 
 
 
-%%
-M = 300;
-N = 300;
 
-[xi, yi] = meshgrid(linspace(-10, 10, 101));
-theta = pi/4;
-gi = sin(theta)*yi + cos(theta)*xi;
-I = sin(5*gi);
-
-figure(1); clf
-subplot(2,2,1)
-imagesc(I)
-subplot(2,2,2)
-imagesc((fftshift(abs(fft2(I-mean(I(:)), M, N)))))
-
-win = hamming(101)*hamming(101)';
-win = sqrt(win);
-subplot(2,2,3)
-Itmp = (I-mean(I(:))) .* win ;
-imagesc(Itmp)
-
-subplot(2,2,4)
-imagesc((fftshift(abs(fft2( Itmp , M, N)))))
 
 %%
 
@@ -119,24 +66,21 @@ iTrial = 0;
 %%
 
 %% reconstruct stimulus
+% pick a trial and replay the stimulus
 rect = [-20 -10 50 60];
 % rect = [0 0 1280 720]
+validTrials = io.getValidTrials(Exp, 'Gabor');
 thisTrial = validTrials(10);
-validTrials = io.getValidTrials(Exp, 'BackImage');
-[Stim2, frameInfo2] = regenerateStimulus(Exp, thisTrial, rect, 'spatialBinSize', 1, ...
+
+[Stim, frameInfo] = regenerateStimulus(Exp, thisTrial, rect, 'spatialBinSize', 1, ...
     'EyePos', [eyeX eyeY], ...
     'debug', false, ...
     'Latency', 0, 'includeProbe', true, 'GazeContingent', true, 'ExclusionRadius', inf,...
     'frameIndex', [], 'usePTBdraw', false);
 
+disp("Done")
 
-% %%
-% [Stim2, frameInfo2] = regenerateStimulus(Exp, validTrials(1), rect, 'spatialBinSize', 1, ...
-%     'EyePos', [eyeX eyeY], ...
-%     'Latency', 0, 'includeProbe', true, 'GazeContingent', true, 'ExclusionRadius', inf,...
-%     'frameIndex', [], 'usePTBdraw', true);
-
-%%
+%% play a movie of that stimulus
 
 figure(1); clf
 
@@ -146,33 +90,6 @@ for i = 1:size(Stim,3)
     drawnow
 end
 
-%%
-
-validTrials = io.getValidTrials(Exp, 'BackImage');
-thisTrial = validTrials(10);
-%%
-figure(1); clf; 
-plot(Exp.D{thisTrial}.eyeData(:,1), Exp.D{thisTrial}.eyeData(:,5))
-
-hold on
-plot(Exp.D{thisTrial}.eyeData(:,1), Exp.D{thisTrial}.eyeData(:,2)-130)
-
-plot(Exp.D{thisTrial}.PR.NoiseHistory(:,1), Exp.D{thisTrial}.PR.NoiseHistory(:,4))
-plot(frameInfo.frameTimesPtb, squeeze(mean(mean(Stim.^2, 2),1))/100)
-plot(frameInfo.frameTimesPtb, frameInfo.eyeAtFrame(:,2)-600)
-
-figure(2); clf; 
-plot(Exp.D{thisTrial}.eyeData(:,1), Exp.D{thisTrial}.eyeData(:,5))
-
-hold on
-plot(Exp.D{thisTrial}.eyeData(:,1), Exp.D{thisTrial}.eyeData(:,2)-130)
-
-plot(Exp.D{thisTrial}.PR.NoiseHistory(:,1), Exp.D{thisTrial}.PR.NoiseHistory(:,4))
-
-%%
-figure(1); clf
-plot(frameInfo2.frameTimesPtb, squeeze(mean(mean(Stim2.^2, 2),1))/100); hold on
-plot(frameInfo2.frameTimesPtb, frameInfo2.eyeAtFrame(:,2)-600)
 
 %%
 et = frameInfo.eyeAtFrame(:,1);
@@ -186,14 +103,11 @@ for i = 1:size(frameInfo.blocks,1)
     fill(et(block([1 1 2 2])),[ylim fliplr(ylim)], 'r', 'FaceAlpha', .25)
 end
 
-%%
-figure(1); clf
-subplot(1,2,1)
-imagesc(Stim(:,:,1))
-subplot(1,2,2)
-imagesc(Stim2(:,:,4))
 
 %%
+%% pick an image trial
+
+validTrials = io.getValidTrials(Exp, 'BackImage');
 iTrial = 1;
 %%
 iTrial = iTrial + 1;
@@ -252,73 +166,49 @@ iTrial = iTrial + 1;
     clu = Exp.osp.clu(spkix);
     plot.raster(st, clu+10, 2, 'k', 'Linewidth', 2)
     axis off
-    pause(.1)
+%     pause(.1)
 
-% 
-% 
-%     win = [0 0];
+ifix = 0;
+
+%%    
+
+
+win = [0 -0.05];
+ifix = ifix + 1;
 %     
 %     for ifix = 1:nfix
-%         %     if ifix > nfix
-%         %         ifix = 0;
-%         %     end
+if ifix > nfix
+    ifix = 0;
+end
 % 
-%         thisfix = fixix(ifix);
-% 
-%         ii = eyeTime > fixon(thisfix)+win(1) & eyeTime < sacon(thisfix)+win(2);
-% 
-%         et = eyeTime(ii);
-%         fixX = eyeX(ii)*ppd + ctr(1);
-%         fixY = -eyeY(ii)*ppd + ctr(2);
-% 
-% 
-%         eyeFiltX = filter(bcEye, 1, eyeX(ii));
-%         eyeFiltY = filter(bcEye, 1, eyeY(ii));
-% 
-%         eyeFiltX = eyeFiltX(1:nbc:end);
-%         eyeFiltY = eyeFiltY(1:nbc:end);
-% 
-%         binfun = @(t) (t==0) + ceil(t/binsize);
-% 
-%         iix = st > fixon(thisfix)+win(1) & st < sacon(thisfix)+win(2);
-%         st_ = st(iix);
-%         clu_ = clu(iix);
-%         
-%         n = size(eyeFiltX,1);
-%         spk = sparse(binfun(st_ - fixon(thisfix)), double(clu_), ones(numel(clu_), 1), n+1, MC);
-%         spk = full(spk(1:n,:));
-%     
-% 
-%         gazeFixX(1:n,numFixCumulative(iTrial)+ifix) = eyeFiltX;
-%         gazeFixY(1:n, numFixCumulative(iTrial)+ifix) = eyeFiltY;
-%         spikesFix(1:n,:,numFixCumulative(iTrial)+ifix) = spk(:,cids);
-%     end
-% end
+thisfix = fixix(ifix);
 
-%%
-dx = gazeFixX(1:numBins,:) - gazeFixX(1,:);
+ii = eyeTime > fixon(thisfix)+win(1) & eyeTime < sacon(thisfix)+win(2);
 
-dx = dx(:,sum(abs(diff(dx)) > 1) == 0);
-dx = dx(5:end,:); dx = dx - dx(1,:);
-
-dx(isnan(dx)) = 0;
-plot(dx)
-
-[Pxx, F] = pwelch(dx, [], [], [], 1/binsize);
-
-figure(4); clf
-plot(F, mean(Pxx,2))
-
-figure(3); clf
-imagesc(gazeFixX(1:numBins,:) - gazeFixX(1,:))
-
-%%
-cc = 1;
-[i,j] = find(squeeze(spikesFix(1:numBins,cc,:)));
-plot.raster(i,j)
+et = eyeTime(ii);
+fixX = eyeX(ii)*ppd + ctr(1);
+fixY = -eyeY(ii)*ppd + ctr(2);
 
 
-%%
+eyeFiltX = filter(bcEye, 1, eyeX(ii));
+eyeFiltY = filter(bcEye, 1, eyeY(ii));
+
+eyeFiltX = eyeFiltX(1:nbc:end);
+eyeFiltY = eyeFiltY(1:nbc:end);
+
+binfun = @(t) (t==0) + ceil(t/binsize);
+
+iix = st > fixon(thisfix)+win(1) & st < sacon(thisfix)+win(2);
+st_ = st(iix);
+clu_ = clu(iix);
+
+
+stbin = binfun(st_ - fixon(thisfix));
+n = max(size(eyeFiltX,1), max(stbin));
+spk = sparse(stbin, double(clu_), ones(numel(clu_), 1), n+1, MC);
+spk = full(spk(1:n,:));
+    
+
 % center on eye position
 i = ceil(numel(et)/2);
 tmprect = rect + [fixX(i) fixY(i) fixX(i) fixY(i)];
@@ -366,7 +256,7 @@ iix = st > fixon(thisfix)+win(1) & st < sacon(thisfix)+win(2);
 
 figure(1)
 subplot(2,1,1)
-plot(binedges(1:end-1)-fixon(thisfix), imgaussfilt(cnt, 2), 'k')
+plot(binedges(1:end-1)-fixon(thisfix), cnt, 'k')
 
 subplot(2,1,2)
 
@@ -378,100 +268,40 @@ for i = 1:nbins
 end
 xlim(xd)
 
-
 %%
-binsize = 5e-3;
-binfun = @(t) (t==0) + ceil(t/binsize);
-spk = sparse(binfun(st_ - fixon(thisfix)), double(clu_), ones(numel(clu_), 1));
+tstart = Exp.ptb2Ephys(cellfun(@(x) x.STARTCLOCKTIME, Exp.D(validTrials)));
+tstop = Exp.ptb2Ephys(cellfun(@(x) x.ENDCLOCKTIME, Exp.D(validTrials)));
+stimLatency = 8e-3;
 
-spk = full(spk');
+cids = unique(Exp.osp.clu);
+ev = Exp.ptb2Ephys(cellfun(@(x) x.PR.startTime, Exp.D(validTrials))) + stimLatency;
+evsacon = Exp.vpx2ephys(Exp.slist(:,1));
+evsacon = evsacon(getTimeIdx(evsacon, tstart, tstop));
+evsacoff = Exp.vpx2ephys(Exp.slist(:,2));
+evsacoff = evsacoff(getTimeIdx(evsacoff, tstart, tstop));
 
-[Pxx, F] = pwelch(spk, [], [], [], 1/binsize);
+win = [-.5 1];
+bs = 10e-3;
+NC = numel(cids);
+
+cc = cc + 1;
+if cc > NC
+    cc = 0;
+end
+
+
+sptimes = Exp.osp.st(Exp.osp.clu==cids(cc));
+
+
+
+[m,s,bc,v, tspcnt] = eventPsth(sptimes, ev, win, bs);
+[msacon,ssacon,~,vsacon, tspcntsacon] = eventPsth(sptimes, evsacon, win, bs);
+[msacoff,ssacoff,~,vsacoff, tspcntsacoff] = eventPsth(sptimes, evsacoff, win, bs);
 
 figure(1); clf
-plot(F, mean(Pxx,2))
-%%
-figure(3); clf
-plot(spk(:,6))
-
-%%
-clf
-
-Iwin = log10(I+127).*hwin;
-% Iwin = (I - mean(I(:))).*hwin;
-
-imagesc(Iwin, [-1 1]*max(abs(Iwin(:))))
-
-
-axis off
-
-%%
-fIm = fftshift(fft2(Iwin, nxfft, nyfft));
-            
-            
-            
-
-
-
-%%
-[valid, epoch] = getTimeIdx(fixon, tstart, tstop);
-fixon = fixon(valid);
-sacon = sacon(valid);
-fixTrial = epoch(valid);
-
-fixdur = sacon - fixon;
-
-% --- eye position
-eyeTime = Exp.vpx2ephys(Exp.vpx.smo(:,1)); % time
-remove = find(diff(eyeTime)==0); % bad samples
-
-
-% filter eye position with 1st order savitzy-golay filter
-eyeX = sgolayfilt(Exp.vpx.smo(:,2), 1, 31);
-eyeX(isnan(eyeX)) = 0;
-eyeY = sgolayfilt(Exp.vpx.smo(:,3), 1, 31);
-eyeY(isnan(eyeY)) = 0;
-
-% remove bad samples
-eyeTime(remove) = [];
-eyeX(remove) = [];
-eyeY(remove) = [];
-
-binSize = median(diff(eyeTime));
-
-[~, ~, id1] = histcounts(fixon, eyeTime);
-[~, ~, id2] = histcounts(sacon, eyeTime);
-
-
-nFix = numel(fixon);
-drifts = cell(nFix,1);
-for ifix = 1:nFix
-    
-    
-    
-    fixix = id1(ifix):id2(ifix);
-    fixix = fixix(30:end);
-    
-    if numel(fixix) < 200
-        continue
-    end
-    
-    ctrx = eyeX(fixix(1));
-    ctry = eyeY(fixix(1));
-
-    
-    fixX = (eyeX(fixix)-ctrx)*60;
-    fixY = (eyeY(fixix)-ctry)*60;
-    spd = hypot(diff(fixX), diff(fixY));
-    nxsac = find(spd > 1, 1);
-    if isempty(nxsac)
-        nxsac = numel(spd);
-    end
-    nxsac = nxsac - 15;
-    
-    fixX = fixX(1:nxsac);
-    fixY = fixY(1:nxsac);
-    
-    drift = hypot(fixX, fixY);
-    drifts{ifix} = drift;
-end
+set(gcf, 'Color', 'w')
+plot(bc, m, 'Linewidth', 2); hold on
+plot(bc, msacon, 'Linewidth', 2)
+plot(bc, msacoff, 'Linewidth', 2)
+legend({'Image Onset', 'Saccade Onset', 'Saccade Offset'})
+title(cc)
